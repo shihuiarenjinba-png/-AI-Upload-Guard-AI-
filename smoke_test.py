@@ -27,6 +27,12 @@ with tempfile.TemporaryDirectory() as tmp:
     assert "123456789012" not in text
     assert "[REDACTED_ID]" in text
 
+    boundary = root / "utf8-boundary.txt"
+    boundary.write_bytes(b"boundary@example.com " + "あ".encode("utf-8") * 700_000)
+    boundary_result = inspect_file(boundary)
+    assert boundary_result["status"] == "warning", boundary_result
+    assert "email address candidate" in boundary_result["findings"], boundary_result
+
     undecodable = root / "undecodable.txt"
     undecodable.write_bytes(b"\x81")
     bad = inspect_file(undecodable)

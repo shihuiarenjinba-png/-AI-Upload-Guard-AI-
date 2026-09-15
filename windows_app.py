@@ -53,7 +53,10 @@ def decode_sample_bytes(raw: bytes) -> str:
 
 def read_text_sample(path: Path, limit: int = 2_000_000) -> str:
     with path.open("rb") as fh:
-        return decode_sample_bytes(fh.read(limit + 4096))
+        raw = fh.read(limit + 1)
+    if len(raw) <= limit:
+        return decode_bytes(raw)
+    return decode_sample_bytes(raw[:limit])
 
 
 def read_text_all(path: Path) -> str:
@@ -235,8 +238,10 @@ def make_safer_copy(path: Path, output_dir: Path) -> Path:
     if ext in TEXTLIKE:
         text = read_text_all(path)
         text = EMAIL_RE.sub("[REDACTED_EMAIL]", text)
-        text = PHONE_RE.sub("[REDACTED_PHONE]", text)
+        # Classify standalone long identifiers before the broader phone
+        # pattern can consume the same digit sequence.
         text = LONG_ID_RE.sub("[REDACTED_ID]", text)
+        text = PHONE_RE.sub("[REDACTED_PHONE]", text)
         out.write_text(text, encoding="utf-8")
         return out
 
