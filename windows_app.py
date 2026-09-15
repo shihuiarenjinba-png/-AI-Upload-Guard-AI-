@@ -97,7 +97,9 @@ def inspect_pdf(path: Path) -> list[str]:
         if reader.is_encrypted:
             return ["encrypted PDF requires explicit handling"]
         if reader.metadata:
-            findings.append("PDF metadata present")
+            findings.append("PDF document-info metadata present")
+        if reader.xmp_metadata:
+            findings.append("PDF XMP metadata present")
         text = "\n".join((p.extract_text() or "") for p in reader.pages[:20])
         findings.extend(scan_text(text[:2_000_000]))
     except Exception as exc:
@@ -152,6 +154,12 @@ def inspect_file(path: Path) -> dict:
     return result
 
 
+def strip_pdf_metadata(writer) -> None:
+    writer.metadata = None
+    writer.xmp_metadata = None
+    writer.compress_identical_objects(remove_duplicates=True, remove_unreferenced=True)
+
+
 def make_safer_copy(path: Path, output_dir: Path) -> Path:
     inspection = inspect_file(path)
     if inspection["status"] == "rejected":
@@ -178,7 +186,7 @@ def make_safer_copy(path: Path, output_dir: Path) -> Path:
         writer = PdfWriter()
         for page in reader.pages:
             writer.add_page(page)
-        writer.add_metadata({})
+        strip_pdf_metadata(writer)
         with out.open("wb") as fh:
             writer.write(fh)
         return out
