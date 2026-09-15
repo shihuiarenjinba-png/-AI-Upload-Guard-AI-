@@ -1,11 +1,6 @@
 from __future__ import annotations
 
-import csv
-import json
-import os
 import re
-import shutil
-import tempfile
 import zipfile
 from pathlib import Path
 from tkinter import BOTH, END, LEFT, RIGHT, Button, Frame, Label, Listbox, Scrollbar, Tk, filedialog, messagebox
@@ -55,8 +50,7 @@ def inspect_office_container(path: Path) -> list[str]:
             for info in zf.infolist():
                 if budget <= 0:
                     break
-                n = info.filename.lower()
-                if n.endswith(".xml") and info.file_size <= 300_000:
+                if info.filename.lower().endswith(".xml") and info.file_size <= 300_000:
                     data = zf.read(info)[: min(info.file_size, budget)]
                     budget -= len(data)
                     text_parts.append(data.decode("utf-8", errors="ignore"))
@@ -110,7 +104,6 @@ def inspect_file(path: Path) -> dict:
         result["status"] = "rejected"
         result["findings"].append("file exceeds 200 MB limit")
         return result
-
     if ext in TEXTLIKE:
         result["findings"].extend(scan_text(read_text_sample(path)))
     elif ext in {".docx", ".xlsx"}:
@@ -119,7 +112,6 @@ def inspect_file(path: Path) -> dict:
         result["findings"].extend(inspect_pdf(path))
     elif ext in {".jpg", ".jpeg", ".png", ".webp"}:
         result["findings"].extend(inspect_image(path))
-
     if result["findings"]:
         result["status"] = "warning"
     return result
@@ -152,8 +144,7 @@ def make_safer_copy(path: Path, output_dir: Path) -> Path:
         text = PHONE_RE.sub("[REDACTED_PHONE]", text)
         out.write_text(text, encoding="utf-8")
         return out
-    shutil.copy2(path, out)
-    raise ValueError("This format is scan-only in the current Windows MVP; no safe-copy transformation is applied.")
+    raise ValueError("This format is scan-only in the current Windows MVP; no safer copy was created.")
 
 
 class App:
@@ -163,7 +154,6 @@ class App:
         self.root.geometry("900x620")
         self.files: list[Path] = []
         self.results: list[dict] = []
-
         top = Frame(root, padx=12, pady=12)
         top.pack(fill="x")
         Label(top, text="AI Upload Guard", font=("Segoe UI", 20, "bold")).pack(anchor="w")
@@ -171,7 +161,6 @@ class App:
         Button(top, text="Add files", command=self.add_files, width=18).pack(side=LEFT, pady=8)
         Button(top, text="Scan", command=self.scan, width=18).pack(side=LEFT, padx=8)
         Button(top, text="Create safer copies", command=self.safe_copies, width=20).pack(side=LEFT)
-
         mid = Frame(root, padx=12)
         mid.pack(fill=BOTH, expand=True)
         sb = Scrollbar(mid)
@@ -181,8 +170,7 @@ class App:
         sb.config(command=self.listbox.yview)
 
     def add_files(self):
-        paths = filedialog.askopenfilenames(title="Select files")
-        for p in paths:
+        for p in filedialog.askopenfilenames(title="Select files"):
             path = Path(p)
             if path not in self.files:
                 self.files.append(path)
