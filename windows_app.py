@@ -13,14 +13,22 @@ ALLOWED = {".pdf", ".csv", ".xlsx", ".docx", ".txt", ".md", ".json", ".jpg", ".j
 TEXTLIKE = {".csv", ".txt", ".md", ".json"}
 
 
-def read_text_sample(path: Path, limit: int = 2_000_000) -> str:
-    raw = path.read_bytes()[:limit]
+def decode_bytes(raw: bytes) -> str:
     for enc in ("utf-8-sig", "utf-8", "cp932", "utf-16"):
         try:
             return raw.decode(enc)
         except UnicodeDecodeError:
             continue
     return raw.decode("utf-8", errors="ignore")
+
+
+def read_text_sample(path: Path, limit: int = 2_000_000) -> str:
+    with path.open("rb") as fh:
+        return decode_bytes(fh.read(limit))
+
+
+def read_text_all(path: Path) -> str:
+    return decode_bytes(path.read_bytes())
 
 
 def scan_text(text: str) -> list[str]:
@@ -39,6 +47,10 @@ def inspect_office_container(path: Path) -> list[str]:
     try:
         with zipfile.ZipFile(path) as zf:
             names = [n.lower() for n in zf.namelist()]
+            if path.suffix.lower() == ".docx" and "word/document.xml" not in names:
+                return ["invalid/corrupt DOCX container"]
+            if path.suffix.lower() == ".xlsx" and "xl/workbook.xml" not in names:
+                return ["invalid/corrupt XLSX container"]
             if any("vbaproject.bin" in n for n in names):
                 findings.append("macro content detected")
             if any("externallinks/" in n for n in names):
@@ -55,8 +67,8 @@ def inspect_office_container(path: Path) -> list[str]:
                     budget -= len(data)
                     text_parts.append(data.decode("utf-8", errors="ignore"))
             findings.extend(scan_text("\n".join(text_parts)))
-    except zipfile.BadZipFile:
-        findings.append("invalid/corrupt Office container")
+    except (zipfile.BadZipFile, OSError) as exc:
+        findings.append(f"invalid/corrupt Office container: {exc}")
     return findings
 
 
@@ -65,13 +77,15 @@ def inspect_image(path: Path) -> list[str]:
     try:
         from PIL import Image
         with Image.open(path) as im:
+            im.verify()
+        with Image.open(path) as im:
             exif = im.getexif()
             if exif and len(exif):
                 findings.append(f"EXIF metadata present ({len(exif)} tags)")
             if "icc_profile" in im.info:
                 findings.append("ICC profile present")
     except Exception as exc:
-        findings.append(f"image parser warning: {exc}")
+        findings.append(f"image parser failure: {exc}")
     return findings
 
 
@@ -79,19 +93,36 @@ def inspect_pdf(path: Path) -> list[str]:
     findings: list[str] = []
     try:
         from pypdf import PdfReader
-        reader = PdfReader(str(path))
+        reader = PdfReader(str(path), strict=True)
+        if reader.is_encrypted:
+            return ["encrypted PDF requires explicit handling"]
         if reader.metadata:
             findings.append("PDF metadata present")
         text = "\n".join((p.extract_text() or "") for p in reader.pages[:20])
         findings.extend(scan_text(text[:2_000_000]))
     except Exception as exc:
-        findings.append(f"PDF parser warning: {exc}")
+        findings.append(f"PDF parser failure: {exc}")
     return findings
+
+
+def is_hard_failure(findings: list[str]) -> bool:
+    hard_prefixes = (
+        "invalid/corrupt",
+        "image parser failure",
+        "PDF parser failure",
+        "encrypted PDF",
+        "macro content detected",
+    )
+    return any(item.startswith(hard_prefixes) for item in findings)
 
 
 def inspect_file(path: Path) -> dict:
     ext = path.suffix.lower()
-    result = {"file": str(path), "size": path.stat().st_size, "status": "accepted", "findings": []}
+    try:
+        size = path.stat().st_size
+    except OSError as exc:
+        return {"file": str(path), "size": 0, "status": "rejected", "findings": [f"file access failure: {exc}"]}
+    result = {"file": str(path), "size": size, "status": "accepted", "findings": []}
     if ext in DANGEROUS:
         result["status"] = "rejected"
         result["findings"].append("executable/active-content type")
@@ -100,10 +131,11 @@ def inspect_file(path: Path) -> dict:
         result["status"] = "rejected"
         result["findings"].append("unsupported/unknown extension")
         return result
-    if path.stat().st_size > 200 * 1024 * 1024:
+    if size > 200 * 1024 * 1024:
         result["status"] = "rejected"
         result["findings"].append("file exceeds 200 MB limit")
         return result
+
     if ext in TEXTLIKE:
         result["findings"].extend(scan_text(read_text_sample(path)))
     elif ext in {".docx", ".xlsx"}:
@@ -112,25 +144,37 @@ def inspect_file(path: Path) -> dict:
         result["findings"].extend(inspect_pdf(path))
     elif ext in {".jpg", ".jpeg", ".png", ".webp"}:
         result["findings"].extend(inspect_image(path))
-    if result["findings"]:
+
+    if is_hard_failure(result["findings"]):
+        result["status"] = "rejected"
+    elif result["findings"]:
         result["status"] = "warning"
     return result
 
 
 def make_safer_copy(path: Path, output_dir: Path) -> Path:
+    inspection = inspect_file(path)
+    if inspection["status"] == "rejected":
+        raise ValueError("Rejected by intake gate: " + "; ".join(inspection["findings"]))
     ext = path.suffix.lower()
     output_dir.mkdir(parents=True, exist_ok=True)
     out = output_dir / f"{path.stem}_safe{ext}"
     if ext in {".jpg", ".jpeg", ".png", ".webp"}:
-        from PIL import Image
-        with Image.open(path) as im:
-            clean = im.convert("RGB") if ext in {".jpg", ".jpeg"} else im.copy()
-            kwargs = {"quality": 95} if ext in {".jpg", ".jpeg"} else {}
-            clean.save(out, **kwargs)
+        from PIL import Image, ImageOps
+        with Image.open(path) as source:
+            im = ImageOps.exif_transpose(source)
+            if ext in {".jpg", ".jpeg"}:
+                im.convert("RGB").save(out, format="JPEG", quality=95, optimize=True)
+            elif ext == ".png":
+                im.save(out, format="PNG", optimize=True)
+            else:
+                im.save(out, format="WEBP", quality=95, method=6)
         return out
     if ext == ".pdf":
         from pypdf import PdfReader, PdfWriter
-        reader = PdfReader(str(path))
+        reader = PdfReader(str(path), strict=True)
+        if reader.is_encrypted:
+            raise ValueError("Encrypted PDFs are scan/reject only in this MVP.")
         writer = PdfWriter()
         for page in reader.pages:
             writer.add_page(page)
@@ -139,7 +183,7 @@ def make_safer_copy(path: Path, output_dir: Path) -> Path:
             writer.write(fh)
         return out
     if ext in TEXTLIKE:
-        text = read_text_sample(path, limit=20_000_000)
+        text = read_text_all(path)
         text = EMAIL_RE.sub("[REDACTED_EMAIL]", text)
         text = PHONE_RE.sub("[REDACTED_PHONE]", text)
         out.write_text(text, encoding="utf-8")
