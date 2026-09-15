@@ -10,16 +10,30 @@ EMAIL_RE = re.compile(r"[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}", re.I)
 PHONE_RE = re.compile(r"(?<!\d)(?:\+?81[- ]?)?0?\d{1,4}[- ]?\d{1,4}[- ]?\d{3,4}(?!\d)")
 LONG_ID_RE = re.compile(r"(?<!\d)\d{10,16}(?!\d)")
 DANGEROUS = {".exe", ".dll", ".scr", ".com", ".bat", ".cmd", ".ps1", ".js", ".vbs", ".msi", ".jar"}
-ALLOWED = {".pdf", ".csv", ".xlsx", ".docx", ".txt", ".md", ".json", ".jpg", ".jpeg", ".png", ".webp"}
-TEXTLIKE = {".csv", ".txt", ".md", ".json"}
+ALLOWED = {
+    ".pdf", ".csv", ".tsv", ".xlsx", ".docx", ".txt", ".md", ".json", ".xml",
+    ".yaml", ".yml", ".log", ".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff",
+}
+TEXTLIKE = {".csv", ".tsv", ".txt", ".md", ".json", ".xml", ".yaml", ".yml", ".log"}
+IMAGELIKE = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff"}
 TEXT_ENCODINGS = ("utf-8-sig", "utf-8", "cp932", "utf-16")
+
+
+def validate_decoded_text(text: str) -> str:
+    if "\x00" in text:
+        raise UnicodeError("Decoded text contains NUL bytes and appears binary.")
+    if text:
+        controls = sum(ord(ch) < 32 and ch not in "\t\n\r\f" for ch in text)
+        if controls / len(text) > 0.01:
+            raise UnicodeError("Decoded text contains too many control characters and appears binary.")
+    return text
 
 
 def decode_bytes(raw: bytes) -> str:
     last_error: UnicodeError | None = None
     for enc in TEXT_ENCODINGS:
         try:
-            return raw.decode(enc)
+            return validate_decoded_text(raw.decode(enc))
         except UnicodeError as exc:
             last_error = exc
     raise UnicodeError(f"Unsupported or undecodable text encoding; supported encodings: {', '.join(TEXT_ENCODINGS)}") from last_error
@@ -31,7 +45,7 @@ def decode_sample_bytes(raw: bytes) -> str:
     for enc in TEXT_ENCODINGS:
         try:
             decoder = codecs.getincrementaldecoder(enc)(errors="strict")
-            return decoder.decode(raw, final=False)
+            return validate_decoded_text(decoder.decode(raw, final=False))
         except UnicodeError as exc:
             last_error = exc
     raise UnicodeError(f"Unsupported or undecodable text encoding; supported encodings: {', '.join(TEXT_ENCODINGS)}") from last_error
@@ -39,10 +53,6 @@ def decode_sample_bytes(raw: bytes) -> str:
 
 def read_text_sample(path: Path, limit: int = 2_000_000) -> str:
     with path.open("rb") as fh:
-        # Read a small overlap so an email/phone candidate beginning near the
-        # nominal boundary is still visible, while final=False safely holds an
-        # incomplete trailing multibyte sequence instead of falling through to
-        # the next encoding.
         return decode_sample_bytes(fh.read(limit + 4096))
 
 
@@ -167,7 +177,7 @@ def inspect_file(path: Path) -> dict:
         result["findings"].extend(inspect_office_container(path))
     elif ext == ".pdf":
         result["findings"].extend(inspect_pdf(path))
-    elif ext in {".jpg", ".jpeg", ".png", ".webp"}:
+    elif ext in IMAGELIKE:
         result["findings"].extend(inspect_image(path))
 
     if is_hard_failure(result["findings"]):
@@ -190,17 +200,25 @@ def make_safer_copy(path: Path, output_dir: Path) -> Path:
     ext = path.suffix.lower()
     output_dir.mkdir(parents=True, exist_ok=True)
     out = output_dir / f"{path.stem}_safe{ext}"
-    if ext in {".jpg", ".jpeg", ".png", ".webp"}:
+
+    if ext in IMAGELIKE:
         from PIL import Image, ImageOps
         with Image.open(path) as source:
+            source.load()
             im = ImageOps.exif_transpose(source)
+            im.info.clear()
             if ext in {".jpg", ".jpeg"}:
                 im.convert("RGB").save(out, format="JPEG", quality=95, optimize=True)
             elif ext == ".png":
                 im.save(out, format="PNG", optimize=True)
-            else:
+            elif ext == ".webp":
                 im.save(out, format="WEBP", quality=95, method=6)
+            elif ext == ".bmp":
+                im.convert("RGB").save(out, format="BMP")
+            else:
+                im.save(out, format="TIFF", compression="tiff_deflate")
         return out
+
     if ext == ".pdf":
         from pypdf import PdfReader, PdfWriter
         reader = PdfReader(str(path), strict=True)
@@ -213,12 +231,15 @@ def make_safer_copy(path: Path, output_dir: Path) -> Path:
         with out.open("wb") as fh:
             writer.write(fh)
         return out
+
     if ext in TEXTLIKE:
         text = read_text_all(path)
         text = EMAIL_RE.sub("[REDACTED_EMAIL]", text)
         text = PHONE_RE.sub("[REDACTED_PHONE]", text)
+        text = LONG_ID_RE.sub("[REDACTED_ID]", text)
         out.write_text(text, encoding="utf-8")
         return out
+
     raise ValueError("This format is scan-only in the current Windows MVP; no safer copy was created.")
 
 
