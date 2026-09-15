@@ -24,6 +24,18 @@ with tempfile.TemporaryDirectory() as tmp:
     assert "test@example.com" not in text
     assert "090-1234-5678" not in text
 
+    undecodable = root / "undecodable.txt"
+    undecodable.write_bytes(b"\x81")
+    bad = inspect_file(undecodable)
+    assert bad["status"] == "rejected", bad
+    assert any("text parser failure" in item for item in bad["findings"])
+    try:
+        make_safer_copy(undecodable, root / "bad-out")
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("Undecodable text must not produce a safer copy")
+
     pdf = root / "sample.pdf"
     writer = PdfWriter()
     writer.add_blank_page(width=200, height=200)
