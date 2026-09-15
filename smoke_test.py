@@ -1,5 +1,6 @@
 from pathlib import Path
 import tempfile
+from PIL import Image
 from pypdf import PdfReader, PdfWriter
 
 from windows_app import inspect_file, make_safer_copy
@@ -16,25 +17,41 @@ with tempfile.TemporaryDirectory() as tmp:
     root = Path(tmp)
 
     src = root / "sample.txt"
-    src.write_text("Contact test@example.com or 090-1234-5678", encoding="utf-8")
+    src.write_text("Contact test@example.com or 090-1234-5678 ID 123456789012", encoding="utf-8")
     result = inspect_file(src)
     assert result["status"] == "warning"
     out = make_safer_copy(src, root / "out")
     text = out.read_text(encoding="utf-8")
     assert "test@example.com" not in text
     assert "090-1234-5678" not in text
+    assert "123456789012" not in text
+    assert "[REDACTED_ID]" in text
 
     undecodable = root / "undecodable.txt"
     undecodable.write_bytes(b"\x81")
     bad = inspect_file(undecodable)
     assert bad["status"] == "rejected", bad
     assert any("text parser failure" in item for item in bad["findings"])
+
+    binary_like = root / "binary-looking.txt"
+    binary_like.write_bytes(b"\x00" * 64)
+    binary_result = inspect_file(binary_like)
+    assert binary_result["status"] == "rejected", binary_result
     try:
-        make_safer_copy(undecodable, root / "bad-out")
+        make_safer_copy(binary_like, root / "bad-out")
     except ValueError:
         pass
     else:
-        raise AssertionError("Undecodable text must not produce a safer copy")
+        raise AssertionError("Binary-like text must not produce a safer copy")
+
+    bmp = root / "日本語_image.bmp"
+    Image.new("RGB", (32, 32), "white").save(bmp, format="BMP")
+    bmp_result = inspect_file(bmp)
+    assert bmp_result["status"] in {"accepted", "warning"}, bmp_result
+    bmp_safe = make_safer_copy(bmp, root / "bmp-out")
+    assert bmp_safe.exists()
+    with Image.open(bmp_safe) as cleaned_bmp:
+        cleaned_bmp.verify()
 
     pdf = root / "sample.pdf"
     writer = PdfWriter()
@@ -49,5 +66,10 @@ with tempfile.TemporaryDirectory() as tmp:
     safe_reader = PdfReader(str(safe_pdf))
     assert safe_reader.metadata is None, safe_reader.metadata
     assert safe_reader.xmp_metadata is None, safe_reader.xmp_metadata
+
+    spoofed_pdf = root / "not-really.pdf"
+    spoofed_pdf.write_text("not a pdf", encoding="utf-8")
+    spoofed_result = inspect_file(spoofed_pdf)
+    assert spoofed_result["status"] == "rejected", spoofed_result
 
 print("AI Upload Guard smoke test: OK")
