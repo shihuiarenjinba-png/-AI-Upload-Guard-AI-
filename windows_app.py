@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import codecs
 import re
 import zipfile
 from pathlib import Path
@@ -24,9 +25,25 @@ def decode_bytes(raw: bytes) -> str:
     raise UnicodeError(f"Unsupported or undecodable text encoding; supported encodings: {', '.join(TEXT_ENCODINGS)}") from last_error
 
 
+def decode_sample_bytes(raw: bytes) -> str:
+    """Decode a byte-limited sample without misclassifying a valid multibyte tail."""
+    last_error: UnicodeError | None = None
+    for enc in TEXT_ENCODINGS:
+        try:
+            decoder = codecs.getincrementaldecoder(enc)(errors="strict")
+            return decoder.decode(raw, final=False)
+        except UnicodeError as exc:
+            last_error = exc
+    raise UnicodeError(f"Unsupported or undecodable text encoding; supported encodings: {', '.join(TEXT_ENCODINGS)}") from last_error
+
+
 def read_text_sample(path: Path, limit: int = 2_000_000) -> str:
     with path.open("rb") as fh:
-        return decode_bytes(fh.read(limit))
+        # Read a small overlap so an email/phone candidate beginning near the
+        # nominal boundary is still visible, while final=False safely holds an
+        # incomplete trailing multibyte sequence instead of falling through to
+        # the next encoding.
+        return decode_sample_bytes(fh.read(limit + 4096))
 
 
 def read_text_all(path: Path) -> str:
