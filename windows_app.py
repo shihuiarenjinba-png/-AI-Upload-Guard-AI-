@@ -11,15 +11,17 @@ LONG_ID_RE = re.compile(r"(?<!\d)\d{10,16}(?!\d)")
 DANGEROUS = {".exe", ".dll", ".scr", ".com", ".bat", ".cmd", ".ps1", ".js", ".vbs", ".msi", ".jar"}
 ALLOWED = {".pdf", ".csv", ".xlsx", ".docx", ".txt", ".md", ".json", ".jpg", ".jpeg", ".png", ".webp"}
 TEXTLIKE = {".csv", ".txt", ".md", ".json"}
+TEXT_ENCODINGS = ("utf-8-sig", "utf-8", "cp932", "utf-16")
 
 
 def decode_bytes(raw: bytes) -> str:
-    for enc in ("utf-8-sig", "utf-8", "cp932", "utf-16"):
+    last_error: UnicodeError | None = None
+    for enc in TEXT_ENCODINGS:
         try:
             return raw.decode(enc)
-        except UnicodeDecodeError:
-            continue
-    return raw.decode("utf-8", errors="ignore")
+        except UnicodeError as exc:
+            last_error = exc
+    raise UnicodeError(f"Unsupported or undecodable text encoding; supported encodings: {', '.join(TEXT_ENCODINGS)}") from last_error
 
 
 def read_text_sample(path: Path, limit: int = 2_000_000) -> str:
@@ -65,9 +67,9 @@ def inspect_office_container(path: Path) -> list[str]:
                 if info.filename.lower().endswith(".xml") and info.file_size <= 300_000:
                     data = zf.read(info)[: min(info.file_size, budget)]
                     budget -= len(data)
-                    text_parts.append(data.decode("utf-8", errors="ignore"))
+                    text_parts.append(data.decode("utf-8", errors="strict"))
             findings.extend(scan_text("\n".join(text_parts)))
-    except (zipfile.BadZipFile, OSError) as exc:
+    except (zipfile.BadZipFile, OSError, UnicodeError) as exc:
         findings.append(f"invalid/corrupt Office container: {exc}")
     return findings
 
@@ -114,6 +116,7 @@ def is_hard_failure(findings: list[str]) -> bool:
         "PDF parser failure",
         "encrypted PDF",
         "macro content detected",
+        "text parser failure",
     )
     return any(item.startswith(hard_prefixes) for item in findings)
 
@@ -139,7 +142,10 @@ def inspect_file(path: Path) -> dict:
         return result
 
     if ext in TEXTLIKE:
-        result["findings"].extend(scan_text(read_text_sample(path)))
+        try:
+            result["findings"].extend(scan_text(read_text_sample(path)))
+        except (OSError, UnicodeError) as exc:
+            result["findings"].append(f"text parser failure: {exc}")
     elif ext in {".docx", ".xlsx"}:
         result["findings"].extend(inspect_office_container(path))
     elif ext == ".pdf":
