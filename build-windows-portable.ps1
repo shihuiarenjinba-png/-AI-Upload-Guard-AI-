@@ -15,7 +15,7 @@ $Python = Join-Path $Venv "Scripts\python.exe"
   --name "AIUploadGuard" `
   --collect-all PIL `
   --collect-all pypdf `
-  windows_app.py
+  desktop_entry.py
 
 Write-Host "Built: $Root\dist\AIUploadGuard.exe"
-Write-Host "Before sale: run regression tests, PDF metadata/XMP verification, network-egress verification, malware scan, Authenticode signing, then SHA256 the signed artifact."
+Write-Host "Before sale: run SALES_RELEASE_CHECKLIST.md, regression tests, PDF metadata/XMP verification, network-egress verification, JA/EN UI smoke, malware scan, Authenticode signing, then SHA256 the signed artifact."
