@@ -7,7 +7,12 @@ from pathlib import Path
 from tkinter import BOTH, END, LEFT, RIGHT, Button, Frame, Label, Listbox, Scrollbar, Tk, filedialog, messagebox
 
 EMAIL_RE = re.compile(r"[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}", re.I)
-PHONE_RE = re.compile(r"(?<!\d)(?:\+?81[- ]?)?0?\d{1,4}[- ]?\d{1,4}[- ]?\d{3,4}(?!\d)")
+PHONE_RE = re.compile(
+    r"(?<![\d+])(?:"
+    r"\+81(?:[- ]?0?\d{1,4}[- ]\d{1,4}[- ]\d{3,4}|\d{9,10})"
+    r"|0\d{1,4}[- ]\d{1,4}[- ]\d{3,4}"
+    r")(?!\d)"
+)
 LONG_ID_RE = re.compile(r"(?<!\d)\d{10,16}(?!\d)")
 DANGEROUS = {".exe", ".dll", ".scr", ".com", ".bat", ".cmd", ".ps1", ".js", ".vbs", ".msi", ".jar"}
 ALLOWED = {
@@ -39,13 +44,13 @@ def decode_bytes(raw: bytes) -> str:
     raise UnicodeError(f"Unsupported or undecodable text encoding; supported encodings: {', '.join(TEXT_ENCODINGS)}") from last_error
 
 
-def decode_sample_bytes(raw: bytes) -> str:
+def decode_sample_bytes(raw: bytes, *, complete: bool = False) -> str:
     """Decode a byte-limited sample without misclassifying a valid multibyte tail."""
     last_error: UnicodeError | None = None
     for enc in TEXT_ENCODINGS:
         try:
             decoder = codecs.getincrementaldecoder(enc)(errors="strict")
-            return validate_decoded_text(decoder.decode(raw, final=False))
+            return validate_decoded_text(decoder.decode(raw, final=complete))
         except UnicodeError as exc:
             last_error = exc
     raise UnicodeError(f"Unsupported or undecodable text encoding; supported encodings: {', '.join(TEXT_ENCODINGS)}") from last_error
@@ -53,7 +58,8 @@ def decode_sample_bytes(raw: bytes) -> str:
 
 def read_text_sample(path: Path, limit: int = 2_000_000) -> str:
     with path.open("rb") as fh:
-        return decode_sample_bytes(fh.read(limit + 4096))
+        raw = fh.read(limit + 4096)
+    return decode_sample_bytes(raw, complete=path.stat().st_size <= len(raw))
 
 
 def read_text_all(path: Path) -> str:

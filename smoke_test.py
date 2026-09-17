@@ -17,15 +17,22 @@ with tempfile.TemporaryDirectory() as tmp:
     root = Path(tmp)
 
     src = root / "sample.txt"
-    src.write_text("Contact test@example.com or 090-1234-5678 ID 123456789012", encoding="utf-8")
+    src.write_text(
+        "Contact test@example.com or 090-1234-5678, "
+        "+81 90-1234-5678, +819012345678; ID 123456789012",
+        encoding="utf-8",
+    )
     result = inspect_file(src)
     assert result["status"] == "warning"
     out = make_safer_copy(src, root / "out")
     text = out.read_text(encoding="utf-8")
     assert "test@example.com" not in text
     assert "090-1234-5678" not in text
+    assert "+81 90-1234-5678" not in text
+    assert "+819012345678" not in text
     assert "123456789012" not in text
-    assert "[REDACTED_ID]" in text
+    assert text.count("[REDACTED_PHONE]") == 3, text
+    assert text.count("[REDACTED_ID]") == 1, text
 
     undecodable = root / "undecodable.txt"
     undecodable.write_bytes(b"\x81")
