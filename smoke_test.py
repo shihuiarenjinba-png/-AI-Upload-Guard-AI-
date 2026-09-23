@@ -19,7 +19,7 @@ with tempfile.TemporaryDirectory() as tmp:
     src = root / "sample.txt"
     src.write_text(
         "Contact test@example.com or 090-1234-5678, "
-        "+81 90-1234-5678, +819012345678; ID 123456789012",
+        "+81 90-1234-5678, +819012345678, 09012345678; ID 123456789012",
         encoding="utf-8",
     )
     result = inspect_file(src)
@@ -30,9 +30,19 @@ with tempfile.TemporaryDirectory() as tmp:
     assert "090-1234-5678" not in text
     assert "+81 90-1234-5678" not in text
     assert "+819012345678" not in text
+    assert "09012345678" not in text
     assert "123456789012" not in text
-    assert text.count("[REDACTED_PHONE]") == 3, text
+    assert text.count("[REDACTED_PHONE]") == 4, text
     assert text.count("[REDACTED_ID]") == 1, text
+
+    negative = root / "phone-negative.txt"
+    negative.write_text(
+        "2026-09-23 / 〒901-1234 / JPY 12,345 / ORDER-123456 / "
+        "978-4-1234-5678-X / 192.0.2.10 / 090-123-456",
+        encoding="utf-8",
+    )
+    negative_result = inspect_file(negative)
+    assert "phone number candidate" not in negative_result["findings"], negative_result
 
     undecodable = root / "undecodable.txt"
     undecodable.write_bytes(b"\x81")

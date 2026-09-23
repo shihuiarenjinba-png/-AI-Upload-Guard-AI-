@@ -9,8 +9,9 @@ from tkinter import BOTH, END, LEFT, RIGHT, Button, Frame, Label, Listbox, Scrol
 EMAIL_RE = re.compile(r"[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}", re.I)
 PHONE_RE = re.compile(
     r"(?<![\d+])(?:"
-    r"\+81(?:[- ]?0?\d{1,4}[- ]\d{1,4}[- ]\d{3,4}|\d{9,10})"
-    r"|0\d{1,4}[- ]\d{1,4}[- ]\d{3,4}"
+    r"\+81(?:[- ]?(?:70|80|90)[- ]?\d{4}[- ]?\d{4}|[- ]?\d{1,4}[- ]\d{1,4}[- ]\d{3,4})"
+    r"|0(?:70|80|90)(?:[- ]?\d{4}){2}"
+    r"|0(?![789]0[- ])\d{1,4}[- ]\d{1,4}[- ]\d{3,4}"
     r")(?!\d)"
 )
 LONG_ID_RE = re.compile(r"(?<!\d)\d{10,16}(?!\d)")
