@@ -287,8 +287,7 @@ def make_safer_copy(path: Path, output_dir: Path) -> Path:
         text = read_text_all(path)
         text = redact_email_candidates(text)
         text = PHONE_RE.sub("[REDACTED_PHONE]", text)
-        text = LONG_ID_RE.sub("[REDACTED_ID]", text)
-        out.write_text(text, encoding="utf-8")
+        out.write_text(text, encoding="utf-8", newline="")
         return out
 
     raise ValueError("This format is scan-only in the current Windows MVP; no safer copy was created.")

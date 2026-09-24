@@ -31,9 +31,20 @@ with tempfile.TemporaryDirectory() as tmp:
     assert "+81 90-1234-5678" not in text
     assert "+819012345678" not in text
     assert "09012345678" not in text
-    assert "123456789012" not in text
+    assert "123456789012" in text
     assert text.count("[REDACTED_PHONE]") == 4, text
-    assert text.count("[REDACTED_ID]") == 1, text
+    assert "[REDACTED_ID]" not in text, text
+
+    warning_only = root / "long-id-warning-only.txt"
+    warning_only.write_text(
+        "UUID tail 123e4567-e89b-12d3-a456-000000000000 / "
+        "timestamp 1700000000123 / order 202600000012 / account 123456789012",
+        encoding="utf-8",
+    )
+    warning_result = inspect_file(warning_only)
+    assert "long numeric identifier candidate" in warning_result["findings"], warning_result
+    warning_copy = make_safer_copy(warning_only, root / "warning-only-out")
+    assert warning_copy.read_text(encoding="utf-8") == warning_only.read_text(encoding="utf-8")
 
     valid_emails = [
         "simple@example.com",

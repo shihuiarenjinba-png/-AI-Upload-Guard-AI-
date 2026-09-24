@@ -13,6 +13,8 @@ Windows-only implementation. The Web/Mobile repositories are intentionally not m
 - Image EXIF / ICC metadata indicators
 - Safer-copy generation for images (metadata-stripped), PDFs (metadata removed), and text/CSV/JSON/Markdown (email/phone redaction)
 
+Long numeric identifiers are warning-only candidates. Because UUID tails, timestamps, order numbers, ISBN-like values, account-like values, random digits, phone numbers, dates, and amounts can share the same shape, safer-copy generation does not automatically delete or replace them. Review each warning in context.
+
 Unknown/unsupported formats fail closed.
 
 ## Run from source
