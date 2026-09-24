@@ -7,6 +7,7 @@ Windows-only implementation. The Web/Mobile repositories are intentionally not m
 - Explicit extension allowlist and executable/active-content rejection
 - 200 MB per-file limit
 - Validated email / phone / long-number candidates in text-like files. Email checks reject malformed local/domain syntax, URL user-info, and filename-like addresses whose first domain label contains no letter.
+- Japanese international phone notation accepts the country-code form without a domestic trunk `0` (for example `+81-90-1234-5678`); `+81-090-...` is treated as invalid, not as an embedded domestic number.
 - DOCX/XLSX ZIP preflight, macro/external-link/comment indicators, text scan
 - PDF metadata + extracted-text scan (first 20 pages)
 - Image EXIF / ICC metadata indicators
