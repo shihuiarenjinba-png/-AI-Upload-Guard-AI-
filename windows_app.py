@@ -29,6 +29,11 @@ ALLOWED = {
 TEXTLIKE = {".csv", ".tsv", ".txt", ".md", ".json", ".xml", ".yaml", ".yml", ".log"}
 IMAGELIKE = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff"}
 TEXT_ENCODINGS = ("utf-8-sig", "utf-8", "cp932", "utf-16")
+TIFF_STRUCTURAL_TAGS = {
+    254, 256, 257, 258, 259, 262, 266, 273, 277, 278, 279,
+    282, 283, 284, 286, 287, 292, 293, 296, 317, 320, 322,
+    323, 324, 325, 338, 339,
+}
 
 
 def validate_decoded_text(text: str) -> str:
@@ -160,8 +165,14 @@ def inspect_image(path: Path) -> list[str]:
             im.verify()
         with Image.open(path) as im:
             exif = im.getexif()
-            if exif and len(exif):
-                findings.append(f"EXIF metadata present ({len(exif)} tags)")
+            raw_tags = set(exif.keys()) if exif else set()
+            structural_tags = raw_tags & TIFF_STRUCTURAL_TAGS if im.format == "TIFF" else set()
+            separately_reported_tags = {34675} if "icc_profile" in im.info else set()
+            privacy_tags = raw_tags - structural_tags - separately_reported_tags
+            if privacy_tags:
+                findings.append(f"EXIF metadata present ({len(privacy_tags)} privacy/content tags)")
+            if 34853 in raw_tags:
+                findings.append("GPS metadata present")
             if "icc_profile" in im.info:
                 findings.append("ICC profile present")
     except Exception as exc:

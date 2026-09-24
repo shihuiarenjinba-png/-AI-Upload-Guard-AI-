@@ -1,6 +1,7 @@
 from pathlib import Path
 import tempfile
 from PIL import Image
+from PIL.TiffImagePlugin import IFDRational
 from pypdf import PdfReader, PdfWriter
 
 from windows_app import find_email_candidates, inspect_file, make_safer_copy
@@ -110,6 +111,26 @@ with tempfile.TemporaryDirectory() as tmp:
     assert bmp_safe.exists()
     with Image.open(bmp_safe) as cleaned_bmp:
         cleaned_bmp.verify()
+
+    baseline_tiff = root / "baseline.tiff"
+    Image.new("RGB", (24, 18), "white").save(baseline_tiff, format="TIFF")
+    baseline_result = inspect_file(baseline_tiff)
+    assert baseline_result["status"] == "accepted", baseline_result
+    assert not any("EXIF metadata" in item for item in baseline_result["findings"])
+
+    gps_jpeg = root / "gps.jpg"
+    gps_exif = Image.Exif()
+    gps_exif[34853] = {
+        1: "N", 2: (IFDRational(26, 1), IFDRational(20, 1), IFDRational(1, 1)),
+        3: "E", 4: (IFDRational(127, 1), IFDRational(48, 1), IFDRational(1, 1)),
+    }
+    Image.new("RGB", (24, 18), "blue").save(gps_jpeg, format="JPEG", exif=gps_exif)
+    gps_result = inspect_file(gps_jpeg)
+    assert gps_result["status"] == "warning", gps_result
+    assert "GPS metadata present" in gps_result["findings"], gps_result
+    gps_safe = make_safer_copy(gps_jpeg, root / "gps-out")
+    gps_clean_result = inspect_file(gps_safe)
+    assert "GPS metadata present" not in gps_clean_result["findings"], gps_clean_result
 
     pdf = root / "sample.pdf"
     writer = PdfWriter()

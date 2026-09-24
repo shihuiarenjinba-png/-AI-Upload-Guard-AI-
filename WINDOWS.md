@@ -10,7 +10,7 @@ Windows-only implementation. The Web/Mobile repositories are intentionally not m
 - Japanese international phone notation accepts the country-code form without a domestic trunk `0` (for example `+81-90-1234-5678`); `+81-090-...` is treated as invalid, not as an embedded domestic number.
 - DOCX/XLSX ZIP preflight, macro/external-link/comment indicators, text scan
 - PDF metadata + extracted-text scan (first 20 pages)
-- Image EXIF / ICC metadata indicators
+- Image EXIF / GPS / ICC metadata indicators. GPS has a distinct warning; required TIFF pixel-layout tags do not trigger an EXIF privacy warning.
 - Safer-copy generation for images (metadata-stripped), PDFs (metadata removed), and text/CSV/JSON/Markdown (email/phone redaction)
 
 Long numeric identifiers are warning-only candidates. Because UUID tails, timestamps, order numbers, ISBN-like values, account-like values, random digits, phone numbers, dates, and amounts can share the same shape, safer-copy generation does not automatically delete or replace them. Review each warning in context.
