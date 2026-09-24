@@ -3,7 +3,7 @@ import tempfile
 from PIL import Image
 from pypdf import PdfReader, PdfWriter
 
-from windows_app import inspect_file, make_safer_copy
+from windows_app import find_email_candidates, inspect_file, make_safer_copy
 
 XMP = b'''<?xpacket begin="" id="W5M0MpCehiHzreSzNTczkc9d"?>
 <x:xmpmeta xmlns:x="adobe:ns:meta/">
@@ -34,6 +34,35 @@ with tempfile.TemporaryDirectory() as tmp:
     assert "123456789012" not in text
     assert text.count("[REDACTED_PHONE]") == 4, text
     assert text.count("[REDACTED_ID]") == 1, text
+
+    valid_emails = [
+        "simple@example.com",
+        "first.last+tag@sub.example.co.jp",
+        "日本語周辺 user_123@example-domain.jp です",
+        "CSV,value@example.org,末尾",
+        '{"email":"json.user@example.net"}',
+        "mailto:owner@example.com",
+    ]
+    for value in valid_emails:
+        assert find_email_candidates(value), value
+
+    hard_email_negatives = [
+        "abc@",
+        "@example.com",
+        "a..b@example.com",
+        "name@example",
+        "https://user@example.com/private",
+        "filename=report@0.txt",
+        "report@5.txt",
+        "const value = 'abc@';",
+        "version=build@1.2.3",
+        "user@-invalid.example",
+        "user@invalid-.example",
+        "全角＠example.com",
+        "'not an address: abc@'",
+    ]
+    for value in hard_email_negatives:
+        assert not find_email_candidates(value), value
 
     negative = root / "phone-negative.txt"
     negative.write_text(

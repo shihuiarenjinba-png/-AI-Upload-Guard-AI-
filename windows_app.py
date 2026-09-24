@@ -6,7 +6,13 @@ import zipfile
 from pathlib import Path
 from tkinter import BOTH, END, LEFT, RIGHT, Button, Frame, Label, Listbox, Scrollbar, Tk, filedialog, messagebox
 
-EMAIL_RE = re.compile(r"[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}", re.I)
+EMAIL_RE = re.compile(
+    r"(?<![A-Z0-9._%+-])"
+    r"[A-Z0-9_%+-]+(?:\.[A-Z0-9_%+-]+)*"
+    r"@[A-Z0-9-]+(?:\.[A-Z0-9-]+)+"
+    r"(?![A-Z0-9._-])",
+    re.I,
+)
 PHONE_RE = re.compile(
     r"(?<![\d+])(?:"
     r"\+81(?:[- ]?(?:70|80|90)[- ]?\d{4}[- ]?\d{4}|[- ]?\d{1,4}[- ]\d{1,4}[- ]\d{3,4})"
@@ -67,9 +73,47 @@ def read_text_all(path: Path) -> str:
     return decode_bytes(path.read_bytes())
 
 
+def _valid_email_match(text: str, match: re.Match[str]) -> bool:
+    """Apply syntax and surrounding-context checks to an email-shaped match."""
+    candidate = match.group(0)
+    local, domain = candidate.rsplit("@", 1)
+    if len(candidate) > 254 or len(local) > 64:
+        return False
+    labels = domain.split(".")
+    if not (2 <= len(labels) and labels[-1].isalpha() and len(labels[-1]) >= 2):
+        return False
+    if any(not label or len(label) > 63 or label.startswith("-") or label.endswith("-") for label in labels):
+        return False
+    if not any(char.isalpha() for char in labels[0]):
+        return False
+
+    # A syntactically valid address used as URL user-info is not a contact email.
+    token_start = max(text.rfind(" ", 0, match.start()), text.rfind("\t", 0, match.start()), text.rfind("\n", 0, match.start())) + 1
+    prefix = text[token_start:match.start()].lower()
+    if "://" in prefix and not prefix.endswith("mailto:"):
+        return False
+
+    # Explicit filename fields are a common hard negative (for example report@0.txt).
+    context = text[max(0, token_start - 12):match.start()].lower()
+    if context.rstrip().endswith(("filename=", "file=", "path=")):
+        return False
+    return True
+
+
+def find_email_candidates(text: str) -> list[re.Match[str]]:
+    return [match for match in EMAIL_RE.finditer(text) if _valid_email_match(text, match)]
+
+
+def redact_email_candidates(text: str) -> str:
+    return EMAIL_RE.sub(
+        lambda match: "[REDACTED_EMAIL]" if _valid_email_match(text, match) else match.group(0),
+        text,
+    )
+
+
 def scan_text(text: str) -> list[str]:
     findings: list[str] = []
-    if EMAIL_RE.search(text):
+    if find_email_candidates(text):
         findings.append("email address candidate")
     if PHONE_RE.search(text):
         findings.append("phone number candidate")
@@ -241,7 +285,7 @@ def make_safer_copy(path: Path, output_dir: Path) -> Path:
 
     if ext in TEXTLIKE:
         text = read_text_all(path)
-        text = EMAIL_RE.sub("[REDACTED_EMAIL]", text)
+        text = redact_email_candidates(text)
         text = PHONE_RE.sub("[REDACTED_PHONE]", text)
         text = LONG_ID_RE.sub("[REDACTED_ID]", text)
         out.write_text(text, encoding="utf-8")
