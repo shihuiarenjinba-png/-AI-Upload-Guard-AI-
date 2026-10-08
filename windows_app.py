@@ -327,7 +327,7 @@ class App:
         sb.config(command=self.listbox.yview)
 
     def add_files(self):
-        for p in filedialog.askopenfilenames(title="Select files"):
+        for p in filedialog.askopenfilenames(parent=self.root, title="Select files"):
             path = Path(p)
             if path not in self.files:
                 self.files.append(path)
@@ -352,7 +352,7 @@ class App:
         if not self.files:
             messagebox.showinfo("AI Upload Guard", "Select files first.")
             return
-        folder = filedialog.askdirectory(title="Choose output folder")
+        folder = filedialog.askdirectory(parent=self.root, title="Choose output folder")
         if not folder:
             return
         ok, errors = 0, []

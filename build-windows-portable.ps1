@@ -17,6 +17,10 @@ if ($LASTEXITCODE -ne 0) { throw "dependency installation failed." }
 if ($LASTEXITCODE -ne 0) { throw "bilingual_smoke_test.py failed." }
 & $Python .\language_standard_smoke_test.py
 if ($LASTEXITCODE -ne 0) { throw "language_standard_smoke_test.py failed." }
+& $Python .\smoke_test.py
+if ($LASTEXITCODE -ne 0) { throw "smoke_test.py failed." }
+& $Python .\dialog_parent_smoke_test.py
+if ($LASTEXITCODE -ne 0) { throw "dialog_parent_smoke_test.py failed." }
 
 & $Python -m PyInstaller --noconfirm --clean --onefile --windowed `
   --name "AIUploadGuard" `
@@ -24,6 +28,7 @@ if ($LASTEXITCODE -ne 0) { throw "language_standard_smoke_test.py failed." }
   --collect-all pypdf `
   desktop_entry.py
 if ($LASTEXITCODE -ne 0) { throw "PyInstaller build failed." }
+Copy-Item -LiteralPath (Join-Path $Root "START_HERE.html") -Destination (Join-Path $Root "dist\START_HERE.html") -Force
 
 Write-Host "Built: $Root\dist\AIUploadGuard.exe"
 Write-Host "Before sale: run SALES_RELEASE_CHECKLIST.md, regression tests, PDF metadata/XMP verification, network-egress verification, JA/EN UI smoke, malware scan, Authenticode signing, then SHA256 the signed artifact."
