@@ -35,7 +35,7 @@ class UploadReviewGateTests(unittest.TestCase):
 
     def test_large_text_shows_partial_scan_limit(self):
         p = self.root / "long.txt"
-        p.write_bytes(b"x" * (2_000_000 + 250) + b"\n")
+        p.write_bytes(b"x" * (2_000_000 + 5000) + b"\n")
         result = inspect_file(p)
         self.assertTrue(any("2 MB" in note for note in result["unchecked"]))
 
