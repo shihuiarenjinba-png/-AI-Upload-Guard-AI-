@@ -56,6 +56,12 @@ _LANGUAGE = _initial_language()
 
 TEXTS: dict[str, tuple[str, str]] = {
     "AI Upload Guard": ("AI Upload Guard", "AIアップロードガード"),
+    "Local pre-upload review. No scan can guarantee that a file is safe.": ("Local pre-upload review. No scan can guarantee that a file is safe.", "アップロード前にローカルで点検します。安全性を保証するものではありません。"),
+    "Rescan": ("Rescan", "再検査"),
+    "Export limited copies": ("Export limited copies", "限定処理のコピーを出力"),
+    "Review limited transformations": ("Review limited transformations", "限定的な変換内容を確認"),
+    "Blocked": ("Blocked", "ブロック"),
+
     "Image Privacy Cleaner": ("Image Privacy Cleaner", "画像プライバシークリーナー"),
     "Local Document Extractor": ("Local Document Extractor", "ローカル文書抽出"),
     "Document Extractor": ("Document Extractor", "文書抽出"),
@@ -137,6 +143,15 @@ PHRASES: tuple[tuple[str, str], ...] = (
     ("Requested column(s) not found", "指定した列が見つかりません"), ("missing requested column(s)", "指定した列がありません"), ("Refusing to drop every", "すべての列を削除する操作を拒否しました:"),
     ("no flagged issue in supported checks", "対応チェックでは問題候補なし"), ("no EXIF/GPS/ICC flags", "EXIF/GPS/ICCの検出なし"), ("manual review required", "手動確認が必要"),
     ("hash skipped", "ハッシュを省略"), ("hash failed", "ハッシュ失敗"), ("duplicate content", "重複内容"), ("hidden file/path", "隠しファイル/パス"), ("data-bearing file type", "データを含む可能性のある形式"),
+    ("Checked:", "検査内容:"), ("Not checked:", "未検査:"), ("LIMITED", "検査範囲限定"),
+    ("REVIEW", "要確認"), ("BLOCK", "ブロック"),
+    ("No candidate matched in checked areas", "検査範囲では該当候補なし"),
+    ("Unrecognized secrets and semantic context", "未対応の機密情報と文脈による判断"),
+    ("Text beyond the first 2 MB was not scanned.", "先頭2MB以降のテキストは未検査です。"),
+    ("Visible personal data, text, faces, QR codes and embedded payloads", "可視の個人情報・文字・顔・QR・埋め込み情報"),
+    ("Generated output could not be re-read.", "出力を再検査できませんでした。"),
+    ("PDF metadata remains.", "PDFメタデータが残っています。"),
+    ("Output metadata flags remain.", "出力のメタデータ警告が残っています。"),
     ("Created", "作成"), ("Exported", "出力"), ("Saved", "保存"), ("SAVED", "保存"), ("REJECTED", "拒否"), ("WARNING", "警告"), ("ACCEPTED", "受付"), ("BLOCKED", "ブロック"), ("ERROR", "エラー"),
     ("Folder:", "フォルダ:"), ("Files:", "ファイル数:"), ("flagged:", "要確認:"), ("Rows=", "行数="), ("Columns=", "列数="), ("missing=", "欠損="),
 )
