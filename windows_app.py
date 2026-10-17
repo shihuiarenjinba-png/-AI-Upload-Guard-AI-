@@ -259,7 +259,7 @@ def inspect_file(path: Path) -> dict:
         unchecked.append("Content was not fully inspected; upload is blocked.")
     elif ext in TEXTLIKE:
         checked.append("Text pattern candidates (email, phone, long number)")
-        if result["size"] > 2_000_000:
+        if result["size"] > 2_000_000 + 4096:
             unchecked.append("Text beyond the first 2 MB was not scanned.")
         unchecked.append("Unrecognized secrets and semantic context")
     elif ext in {".docx", ".xlsx"}:
