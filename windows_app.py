@@ -363,16 +363,30 @@ def make_safer_copy(path: Path, output_dir: Path) -> Path:
         for page in reader.pages:
             writer.add_page(page)
         strip_pdf_metadata(writer)
-        with out.open("xb") as fh:
-            writer.write(fh)
+        created = False
+        try:
+            with out.open("xb") as fh:
+                created = True
+                writer.write(fh)
+        except BaseException:
+            if created:
+                out.unlink(missing_ok=True)
+            raise
         return verify_safer_copy(path, out)
 
     if ext in TEXTLIKE:
         text = read_text_all(path)
         text = redact_email_candidates(text)
         text = PHONE_RE.sub("[REDACTED_PHONE]", text)
-        with out.open("x", encoding="utf-8", newline="") as fh:
-            fh.write(text)
+        created = False
+        try:
+            with out.open("x", encoding="utf-8", newline="") as fh:
+                created = True
+                fh.write(text)
+        except BaseException:
+            if created:
+                out.unlink(missing_ok=True)
+            raise
         return verify_safer_copy(path, out)
 
     raise ValueError("This format is scan-only in the current Windows MVP; no safer copy was created.")
