@@ -210,7 +210,7 @@ def is_hard_failure(findings: list[str]) -> bool:
     return any(item.startswith(hard_prefixes) for item in findings)
 
 
-def inspect_file(path: Path) -> dict:
+def _inspect_file_core(path: Path) -> dict:
     ext = path.suffix.lower()
     try:
         size = path.stat().st_size
@@ -249,6 +249,77 @@ def inspect_file(path: Path) -> dict:
     return result
 
 
+def inspect_file(path: Path) -> dict:
+    """Keep the legacy status for existing consumers and expose scan coverage."""
+    result = _inspect_file_core(path)
+    ext = path.suffix.lower()
+    checked = []
+    unchecked = []
+    if result["status"] == "rejected":
+        unchecked.append("Content was not fully inspected; upload is blocked.")
+    elif ext in TEXTLIKE:
+        checked.append("Text pattern candidates (email, phone, long number)")
+        if result["size"] > 2_000_000:
+            unchecked.append("Text beyond the first 2 MB was not scanned.")
+        unchecked.append("Unrecognized secrets and semantic context")
+    elif ext in {".docx", ".xlsx"}:
+        checked.append("Some Office XML text and container indicators")
+        unchecked.append("All embedded content, hidden data and ZIP contents outside scan limits")
+    elif ext == ".pdf":
+        checked.append("Document metadata and extractable text on first 20 pages")
+        unchecked.append("Scanned images/OCR, attachments, annotations, hidden objects and remaining pages")
+    elif ext in IMAGELIKE:
+        checked.append("EXIF/GPS/ICC indicators")
+        unchecked.append("Visible personal data, text, faces, QR codes and embedded payloads")
+    if not checked:
+        checked.append("File type, size and basic parse gate")
+    result["checked"] = checked
+    result["unchecked"] = unchecked
+    result["decision"] = (
+        "BLOCK" if result["status"] == "rejected"
+        else "REVIEW" if result["status"] == "warning"
+        else "LIMITED"
+    )
+    return result
+
+
+def verify_safer_copy(path: Path, output: Path) -> Path:
+    """Verify only the explicitly supported transformations, not complete safety."""
+    try:
+        inspection = inspect_file(output)
+        ext = path.suffix.lower()
+        if inspection["status"] == "rejected":
+            raise ValueError("Generated output could not be re-read.")
+        if ext in IMAGELIKE:
+            if any("GPS metadata present" in x or "ICC profile present" in x or "EXIF metadata present" in x
+                   for x in inspection["findings"]):
+                raise ValueError("Output metadata flags remain.")
+        elif ext == ".pdf":
+            from pypdf import PdfReader
+            reader = PdfReader(str(output), strict=True)
+            if reader.metadata or reader.xmp_metadata:
+                raise ValueError("PDF metadata remains.")
+        elif ext in TEXTLIKE:
+            if any(x in inspection["findings"] for x in ("email address candidate", "phone number candidate")):
+                raise ValueError("Output text still contains detected email/phone candidates.")
+        return output
+    except BaseException:
+        output.unlink(missing_ok=True)
+        raise
+
+
+def _save_new_image(image, out: Path, format_name: str, **options) -> None:
+    created = False
+    try:
+        with out.open("xb") as handle:
+            created = True
+            image.save(handle, format=format_name, **options)
+    except BaseException:
+        if created:
+            out.unlink(missing_ok=True)
+        raise
+
+
 def strip_pdf_metadata(writer) -> None:
     writer.metadata = None
     writer.xmp_metadata = None
@@ -262,6 +333,8 @@ def make_safer_copy(path: Path, output_dir: Path) -> Path:
     ext = path.suffix.lower()
     output_dir.mkdir(parents=True, exist_ok=True)
     out = output_dir / f"{path.stem}_safe{ext}"
+    if out.exists() or out.is_symlink() or out.resolve() == path.resolve():
+        raise FileExistsError("Output already exists or would overwrite an input; choose another folder.")
 
     if ext in IMAGELIKE:
         from PIL import Image, ImageOps
@@ -270,16 +343,16 @@ def make_safer_copy(path: Path, output_dir: Path) -> Path:
             im = ImageOps.exif_transpose(source)
             im.info.clear()
             if ext in {".jpg", ".jpeg"}:
-                im.convert("RGB").save(out, format="JPEG", quality=95, optimize=True)
+                _save_new_image(im.convert("RGB"), out, "JPEG", quality=95, optimize=True)
             elif ext == ".png":
-                im.save(out, format="PNG", optimize=True)
+                _save_new_image(im, out, "PNG", optimize=True)
             elif ext == ".webp":
-                im.save(out, format="WEBP", quality=95, method=6)
+                _save_new_image(im, out, "WEBP", quality=95, method=6)
             elif ext == ".bmp":
-                im.convert("RGB").save(out, format="BMP")
+                _save_new_image(im.convert("RGB"), out, "BMP")
             else:
-                im.save(out, format="TIFF", compression="tiff_deflate")
-        return out
+                _save_new_image(im, out, "TIFF", compression="tiff_deflate")
+        return verify_safer_copy(path, out)
 
     if ext == ".pdf":
         from pypdf import PdfReader, PdfWriter
@@ -290,16 +363,17 @@ def make_safer_copy(path: Path, output_dir: Path) -> Path:
         for page in reader.pages:
             writer.add_page(page)
         strip_pdf_metadata(writer)
-        with out.open("wb") as fh:
+        with out.open("xb") as fh:
             writer.write(fh)
-        return out
+        return verify_safer_copy(path, out)
 
     if ext in TEXTLIKE:
         text = read_text_all(path)
         text = redact_email_candidates(text)
         text = PHONE_RE.sub("[REDACTED_PHONE]", text)
-        out.write_text(text, encoding="utf-8", newline="")
-        return out
+        with out.open("x", encoding="utf-8", newline="") as fh:
+            fh.write(text)
+        return verify_safer_copy(path, out)
 
     raise ValueError("This format is scan-only in the current Windows MVP; no safer copy was created.")
 
@@ -314,10 +388,10 @@ class App:
         top = Frame(root, padx=12, pady=12)
         top.pack(fill="x")
         Label(top, text="AI Upload Guard", font=("Segoe UI", 20, "bold")).pack(anchor="w")
-        Label(top, text="Local pre-flight inspection before sending files to AI/external services").pack(anchor="w")
+        Label(top, text="Local pre-upload review. No scan can guarantee that a file is safe.").pack(anchor="w")
         Button(top, text="Add files", command=self.add_files, width=18).pack(side=LEFT, pady=8)
-        Button(top, text="Scan", command=self.scan, width=18).pack(side=LEFT, padx=8)
-        Button(top, text="Create safer copies", command=self.safe_copies, width=20).pack(side=LEFT)
+        Button(top, text="Rescan", command=self.scan, width=18).pack(side=LEFT, padx=8)
+        Button(top, text="Export limited copies", command=self.safe_copies, width=22).pack(side=LEFT)
         mid = Frame(root, padx=12)
         mid.pack(fill=BOTH, expand=True)
         sb = Scrollbar(mid)
@@ -332,6 +406,8 @@ class App:
             if path not in self.files:
                 self.files.append(path)
         self.render_files()
+        if self.files:
+            self.scan()
 
     def render_files(self):
         self.listbox.delete(0, END)
@@ -345,12 +421,31 @@ class App:
         self.results = [inspect_file(p) for p in self.files]
         self.listbox.delete(0, END)
         for r in self.results:
-            findings = "; ".join(r["findings"]) or "no flagged issue in supported checks"
-            self.listbox.insert(END, f"[{r['status'].upper()}] {r['file']} — {findings}")
+            findings = "; ".join(r["findings"]) or "No candidate matched in checked areas"
+            limits = "; ".join(r["unchecked"]) or "Scope is limited to implemented checks"
+            self.listbox.insert(END, f"[{r['decision']}] {r['file']} — {findings}")
+            self.listbox.insert(END, f"    Checked: {', '.join(r['checked'])}")
+            self.listbox.insert(END, f"    Not checked: {limits}")
 
     def safe_copies(self):
         if not self.files:
             messagebox.showinfo("AI Upload Guard", "Select files first.")
+            return
+        self.results = [inspect_file(p) for p in self.files]
+        blocked = [Path(r["file"]).name for r in self.results if r["decision"] == "BLOCK"]
+        if blocked:
+            return messagebox.showerror(
+                "Blocked",
+                "One or more inputs failed preflight. Remove blocked files before exporting:\n"
+                + "\n".join(blocked[:8]),
+            )
+        if not messagebox.askokcancel(
+            "Review limited transformations",
+            "Images: metadata re-encoding only. PDF: document-info/XMP only.\n"
+            "Text: detected email/phone patterns only; long numbers are warning-only.\n"
+            "Office files cannot be transformed. Other hidden information may remain.\n"
+            "Please inspect every result before sharing. Continue?",
+        ):
             return
         folder = filedialog.askdirectory(parent=self.root, title="Choose output folder")
         if not folder:
