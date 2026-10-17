@@ -1,37 +1,31 @@
-# AI Upload Guard — Windows MVP
+# AI Upload Guard — Simplified Windows Review Gate
 
-Windows-only implementation. The Web/Mobile repositories are intentionally not modified.
+## User workflow
+1. Select files. A preflight scan runs immediately.
+2. Read the explicit classification: BLOCK (reject), REVIEW (a candidate/issue), or LIMITED (no candidate found within implemented checks).
+3. For each result, see both **Checked** and **Not checked**. LIMITED never means safe.
+4. Optionally request a limited transformation. A confirmation describes what formats and sensitive content remain outside scope.
+5. Reopen and inspect each generated output before any external upload.
 
-## Current local checks
+### Scope
+- Text files: candidate email/phone/long numeric identifier patterns; only the first ~2MB sampled for scan, and the remaining content explicitly marked uninspected.
+- Office DOCX/XLSX: container and some XML checks; scan-only; no "safe copy" conversion.
+- PDF: metadata + extractable text from first 20 pages, with page/size limits; images, OCR, attachments, annotations and other hidden objects uninspected.
+- Images: EXIF/GPS/ICC indicators; visible content, text, faces and embedded payloads uninspected.
+- Limited copy: re-encodes images; removes PDF document-info and XMP metadata only; masks recognized text email/phone patterns. Long-digit identifiers are **warning only** due to ambiguity.
+- Outputs use exclusive file creation; no existing output is replaced; a supported post-conversion inspection checks the limited target only.
 
-- Explicit extension allowlist and executable/active-content rejection
-- 200 MB per-file limit
-- Validated email / phone / long-number candidates in text-like files. Email checks reject malformed local/domain syntax, URL user-info, and filename-like addresses whose first domain label contains no letter.
-- Japanese international phone notation accepts the country-code form without a domestic trunk `0` (for example `+81-90-1234-5678`); `+81-090-...` is treated as invalid, not as an embedded domestic number.
-- DOCX/XLSX ZIP preflight, macro/external-link/comment indicators, text scan
-- PDF metadata + extracted-text scan (first 20 pages)
-- Image EXIF / GPS / ICC metadata indicators. GPS has a distinct warning; required TIFF pixel-layout tags do not trigger an EXIF privacy warning.
-- Safer-copy generation for images (metadata-stripped), PDFs (metadata removed), and text/CSV/JSON/Markdown (email/phone redaction)
-
-Long numeric identifiers are warning-only candidates. Because UUID tails, timestamps, order numbers, ISBN-like values, account-like values, random digits, phone numbers, dates, and amounts can share the same shape, safer-copy generation does not automatically delete or replace them. Review each warning in context.
-
-Unknown/unsupported formats fail closed.
-
-## Run from source
-
+## Test on Windows
 ```powershell
-py -3 -m pip install pillow pypdf
+py -3 -m pip install pillow "pypdf>=6,<7"
+py -3 -m compileall -q windows_app.py i18n.py smoke_test.py tests
+py -3 .\smoke_test.py
+py -3 -m unittest discover -s tests -v
+py -3 .\bilingual_smoke_test.py
 py -3 .\windows_app.py
 ```
 
-## Build portable EXE
+Portable EXE builder: `build-windows-portable.ps1`. This is **not** an official MSIX.
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\build-windows-portable.ps1
-```
-
-Output: `dist\AIUploadGuard.exe`
-
-## Sales gate
-
-This branch is an MVP, not automatically a sales release. Before distribution verify regression fixtures, egress/network behavior, parser-failure handling, Windows 10/11 execution, malware scan, Authenticode signing, and SHA256 publication. Do not market unsupported DOCX/XLSX automatic sanitization; those formats are scan-only in this MVP.
+## Store release gate — HOLD
+Requires Windows CI actually executed (not just queued/failed before checkout), hostile input fixtures, Japanese UI + 100/125/150% DPI checks, source/output integrity rechecks, external transmission review, licensing and dependency review, formal Partner Center identity, MSIX package, install/update/uninstall, certification, price, privacy disclosure, screenshots, and documentation of known limits. A metadata-clean PDF is not a securely redacted PDF.
