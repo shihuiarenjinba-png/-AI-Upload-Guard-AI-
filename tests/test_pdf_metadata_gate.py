@@ -25,6 +25,18 @@ class PdfMetadataGateTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'metadata-only copying is refused'):
             make_safer_copy(source,self.output)
         self.assertEqual(list(self.output.iterdir()),[])
+    def test_more_than_twenty_pages_cannot_create_limited_pdf_copy(self):
+        from pypdf import PdfWriter
+        source = self.root / 'long.pdf'
+        writer = PdfWriter()
+        for _ in range(21):
+            writer.add_blank_page(width=300, height=400)
+        with source.open('wb') as stream:
+            writer.write(stream)
+        with self.assertRaisesRegex(ValueError, 'uninspected pages'):
+            make_safer_copy(source, self.output)
+        self.assertEqual(list(self.output.iterdir()), [])
+
     def test_no_false_claim_of_full_redaction(self):
         source=self.make_pdf('notice.pdf','This file was reviewed by a person')
         inspection=inspect_file(source)
