@@ -299,6 +299,10 @@ def verify_safer_copy(path: Path, output: Path) -> Path:
             reader = PdfReader(str(output), strict=True)
             if reader.metadata or reader.xmp_metadata:
                 raise ValueError("PDF metadata remains.")
+            if any(x in inspection["findings"] for x in (
+                "email address candidate", "phone number candidate", "long numeric identifier candidate"
+            )):
+                raise ValueError("Detected sensitive PDF text remains; metadata-only output is not approved.")
         elif ext in TEXTLIKE:
             if any(x in inspection["findings"] for x in ("email address candidate", "phone number candidate")):
                 raise ValueError("Output text still contains detected email/phone candidates.")
@@ -355,6 +359,10 @@ def make_safer_copy(path: Path, output_dir: Path) -> Path:
         return verify_safer_copy(path, out)
 
     if ext == ".pdf":
+        if any(x in inspection["findings"] for x in (
+            "email address candidate", "phone number candidate", "long numeric identifier candidate"
+        )):
+            raise ValueError("PDF contains detected text candidates; metadata-only copying is refused.")
         from pypdf import PdfReader, PdfWriter
         reader = PdfReader(str(path), strict=True)
         if reader.is_encrypted:
