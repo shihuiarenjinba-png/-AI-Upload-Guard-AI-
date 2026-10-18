@@ -367,6 +367,12 @@ def make_safer_copy(path: Path, output_dir: Path) -> Path:
         reader = PdfReader(str(path), strict=True)
         if reader.is_encrypted:
             raise ValueError("Encrypted PDFs are scan/reject only in this MVP.")
+        # The intake scanner checks extractable text on the first 20 pages.
+        # Never produce a limited copy when pages beyond that boundary exist.
+        if len(reader.pages) > 20:
+            raise ValueError("PDF has uninspected pages beyond page 20; no copy created.")
+        if any(page.get("/Annots") for page in reader.pages):
+            raise ValueError("PDF annotations are outside the inspected scope; no copy created.")
         writer = PdfWriter()
         for page in reader.pages:
             writer.add_page(page)
