@@ -342,10 +342,14 @@ def file_revision(path: Path) -> str:
 
 
 def verify_source_copy(path: Path, output: Path, original_revision: str) -> Path:
-    if file_revision(path) != original_revision:
+    try:
+        if file_revision(path) != original_revision:
+            raise ValueError("Source file changed during conversion; new output discarded.")
+        return output
+    except BaseException:
+        # Only an output created by this conversion reaches this function.
         output.unlink(missing_ok=True)
-        raise ValueError("Source file changed during conversion; new output discarded.")
-    return output
+        raise
 
 
 def summarize_review(results: list[dict]) -> dict[str, int]:
