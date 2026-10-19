@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import codecs
+import hashlib
 import re
 import zipfile
 from pathlib import Path
@@ -330,7 +331,35 @@ def strip_pdf_metadata(writer) -> None:
     writer.compress_identical_objects(remove_duplicates=True, remove_unreferenced=True)
 
 
+def file_revision(path: Path) -> str:
+    if path.is_symlink() or not path.is_file():
+        raise ValueError("Source must be a regular, existing file.")
+    digest = hashlib.sha256()
+    with path.open("rb") as reader:
+        for block in iter(lambda: reader.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def verify_source_copy(path: Path, output: Path, original_revision: str) -> Path:
+    if file_revision(path) != original_revision:
+        output.unlink(missing_ok=True)
+        raise ValueError("Source file changed during conversion; new output discarded.")
+    return output
+
+
+def summarize_review(results: list[dict]) -> dict[str, int]:
+    counts = {"BLOCK": 0, "REVIEW": 0, "LIMITED": 0, "not_fully_checked": 0}
+    for item in results:
+        key = item.get("decision", "BLOCK")
+        counts[key if key in counts else "BLOCK"] += 1
+        if item.get("unchecked"):
+            counts["not_fully_checked"] += 1
+    return counts
+
+
 def make_safer_copy(path: Path, output_dir: Path) -> Path:
+    original_revision = file_revision(path)
     inspection = inspect_file(path)
     if inspection["status"] == "rejected":
         raise ValueError("Rejected by intake gate: " + "; ".join(inspection["findings"]))
@@ -356,7 +385,7 @@ def make_safer_copy(path: Path, output_dir: Path) -> Path:
                 _save_new_image(im.convert("RGB"), out, "BMP")
             else:
                 _save_new_image(im, out, "TIFF", compression="tiff_deflate")
-        return verify_safer_copy(path, out)
+        return verify_source_copy(path, verify_safer_copy(path, out), original_revision)
 
     if ext == ".pdf":
         if any(x in inspection["findings"] for x in (
@@ -386,7 +415,7 @@ def make_safer_copy(path: Path, output_dir: Path) -> Path:
             if created:
                 out.unlink(missing_ok=True)
             raise
-        return verify_safer_copy(path, out)
+        return verify_source_copy(path, verify_safer_copy(path, out), original_revision)
 
     if ext in TEXTLIKE:
         text = read_text_all(path)
@@ -401,7 +430,7 @@ def make_safer_copy(path: Path, output_dir: Path) -> Path:
             if created:
                 out.unlink(missing_ok=True)
             raise
-        return verify_safer_copy(path, out)
+        return verify_source_copy(path, verify_safer_copy(path, out), original_revision)
 
     raise ValueError("This format is scan-only in the current Windows MVP; no safer copy was created.")
 
@@ -413,13 +442,17 @@ class App:
         self.root.geometry("900x620")
         self.files: list[Path] = []
         self.results: list[dict] = []
+        self.overview = None
         top = Frame(root, padx=12, pady=12)
         top.pack(fill="x")
         Label(top, text="AI Upload Guard", font=("Segoe UI", 20, "bold")).pack(anchor="w")
         Label(top, text="Local pre-upload review. No scan can guarantee that a file is safe.").pack(anchor="w")
         Button(top, text="Add files", command=self.add_files, width=18).pack(side=LEFT, pady=8)
         Button(top, text="Rescan", command=self.scan, width=18).pack(side=LEFT, padx=8)
-        Button(top, text="Export limited copies", command=self.safe_copies, width=22).pack(side=LEFT)
+        Button(top, text="Export supported copies only", command=self.safe_copies, width=28).pack(side=LEFT)
+        self.overview = Label(root, text="No scan yet. LIMITED never means safe.",
+                              anchor="w", padx=12)
+        self.overview.pack(fill="x")
         mid = Frame(root, padx=12)
         mid.pack(fill=BOTH, expand=True)
         sb = Scrollbar(mid)
@@ -447,6 +480,11 @@ class App:
             messagebox.showinfo("AI Upload Guard", "Select one or more files first.")
             return
         self.results = [inspect_file(p) for p in self.files]
+        counts = summarize_review(self.results)
+        self.overview.configure(text=(
+            f"BLOCK {counts['BLOCK']} | REVIEW {counts['REVIEW']} | "
+            f"LIMITED {counts['LIMITED']} | Not fully checked {counts['not_fully_checked']} "
+            "— do not upload without your own review."))
         self.listbox.delete(0, END)
         for r in self.results:
             findings = "; ".join(r["findings"]) or "No candidate matched in checked areas"
@@ -467,6 +505,15 @@ class App:
                 "One or more inputs failed preflight. Remove blocked files before exporting:\n"
                 + "\n".join(blocked[:8]),
             )
+        unsupported = [p.name for p in self.files if p.suffix.lower() in {".xlsx", ".docx"}]
+        if unsupported:
+            messagebox.showwarning("Scan-only files",
+                "DOCX/XLSX cannot be transformed and will be SKIPPED:\n" +
+                "\n".join(unsupported[:10]))
+        eligible = [p for p in self.files if p.suffix.lower() not in {".xlsx", ".docx"}]
+        if not eligible:
+            return messagebox.showinfo("No supported output",
+                "Only scan-only Office files were selected; no copies can be created.")
         if not messagebox.askokcancel(
             "Review limited transformations",
             "Images: metadata re-encoding only. PDF: document-info/XMP only.\n"
@@ -479,13 +526,15 @@ class App:
         if not folder:
             return
         ok, errors = 0, []
-        for p in self.files:
+        for p in eligible:
             try:
                 make_safer_copy(p, Path(folder))
                 ok += 1
             except Exception as exc:
                 errors.append(f"{p.name}: {exc}")
-        msg = f"Created {ok} safer copy/copies."
+        msg = (f"Created {ok} limited processed copy/copies; "
+               f"{len(unsupported)} scan-only Office file(s) skipped. "
+               "No complete privacy guarantee.")
         if errors:
             msg += "\n\n" + "\n".join(errors[:10])
         messagebox.showinfo("AI Upload Guard", msg)
