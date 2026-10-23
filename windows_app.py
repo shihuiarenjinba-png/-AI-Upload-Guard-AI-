@@ -444,6 +444,7 @@ class App:
         self.root = root
         self.root.title("AI Upload Guard — Windows")
         self.root.geometry("900x620")
+        self.root.minsize(760, 500)
         self.files: list[Path] = []
         self.results: list[dict] = []
         self.overview = None
@@ -477,7 +478,7 @@ class App:
     def render_files(self):
         self.listbox.delete(0, END)
         for p in self.files:
-            self.listbox.insert(END, str(p))
+            self.listbox.insert(END, p.name)
 
     def scan(self):
         if not self.files:
@@ -493,7 +494,7 @@ class App:
         for r in self.results:
             findings = "; ".join(r["findings"]) or "No candidate matched in checked areas"
             limits = "; ".join(r["unchecked"]) or "Scope is limited to implemented checks"
-            self.listbox.insert(END, f"[{r['decision']}] {r['file']} — {findings}")
+            self.listbox.insert(END, f"[{r['decision']}] {Path(r['file']).name} — {findings}")
             self.listbox.insert(END, f"    Checked: {', '.join(r['checked'])}")
             self.listbox.insert(END, f"    Not checked: {limits}")
 
