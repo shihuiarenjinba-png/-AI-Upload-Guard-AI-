@@ -55,6 +55,9 @@ def _initial_language() -> str:
 _LANGUAGE = _initial_language()
 
 TEXTS: dict[str, tuple[str, str]] = {
+    "1  Add files": ("1  Add files", "1  ファイルを追加"),
+    "2  Rescan": ("2  Rescan", "2  再スキャン"),
+    "3  Save supported copies": ("3  Save supported copies", "3  対応コピーを保存"),
     "① Add files  →  ② Review results  →  ③ Rescan if needed  →  ④ Save supported copies": ("① Add files  →  ② Review results  →  ③ Rescan if needed  →  ④ Save supported copies", "① ファイル追加  →  ② 結果を確認  →  ③ 必要なら再スキャン  →  ④ 対応コピーを保存"),
     "AI Upload Guard": ("AI Upload Guard", "AIアップロードガード"),
     "Local pre-upload review. No scan can guarantee that a file is safe.": ("Local pre-upload review. No scan can guarantee that a file is safe.", "アップロード前にローカルで点検します。安全性を保証するものではありません。"),
