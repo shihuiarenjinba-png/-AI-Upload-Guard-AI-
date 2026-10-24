@@ -6,6 +6,7 @@ import re
 import zipfile
 from pathlib import Path
 from i18n import translate
+from ui_desktop import bind_shortcuts, restore_window_state, save_window_state
 from tkinter import BOTH, END, LEFT, RIGHT, Button, Frame, Label, Listbox, Scrollbar, Tk, filedialog, messagebox
 
 EMAIL_RE = re.compile(
@@ -446,6 +447,7 @@ class App:
         self.root.title("AI Upload Guard — Windows")
         self.root.geometry("900x620")
         self.root.minsize(760, 500)
+        restore_window_state(self.root, "AIUploadGuard", min_width=760, min_height=500)
         self.files: list[Path] = []
         self.results: list[dict] = []
         self.overview = None
@@ -454,9 +456,14 @@ class App:
         Label(top, text="AI Upload Guard", font=("Segoe UI", 20, "bold")).pack(anchor="w")
         Label(top, text="Local pre-upload review. No scan can guarantee that a file is safe.").pack(anchor="w")
         Label(top, text="① Add files & scan  →  ② Rescan if needed  →  ③ Review results and save supported copies", font=("Segoe UI", 10, "bold"), wraplength=840, justify=LEFT).pack(anchor="w", pady=(4, 0))
-        Button(top, text="1  Add files", command=self.add_files, width=18).pack(side=LEFT, pady=8)
-        Button(top, text="2  Rescan", command=self.scan, width=18).pack(side=LEFT, padx=8)
-        Button(top, text="3  Save supported copies", command=self.safe_copies, width=26).pack(side=LEFT)
+        self.add_button = Button(top, text="1  Add files", command=self.add_files, width=18)
+        self.add_button.pack(side=LEFT, pady=8)
+        self.scan_button = Button(top, text="2  Rescan", command=self.scan, width=18)
+        self.scan_button.pack(side=LEFT, padx=8)
+        self.save_button = Button(top, text="3  Save supported copies", command=self.safe_copies, width=26)
+        self.save_button.pack(side=LEFT)
+        self.clear_button = Button(top, text="Clear list", command=self.clear_files, width=13)
+        self.clear_button.pack(side=LEFT, padx=(8, 0))
         self.overview = Label(root, text="No scan yet. LIMITED never means safe.",
                               anchor="w", padx=12)
         self.overview.pack(fill="x")
@@ -467,6 +474,33 @@ class App:
         self.listbox = Listbox(mid, yscrollcommand=sb.set, font=("Consolas", 10))
         self.listbox.pack(side=LEFT, fill=BOTH, expand=True)
         sb.config(command=self.listbox.yview)
+        bind_shortcuts(self.root, {
+            "<Control-O>": self.add_files,
+            "<F5>": self.scan,
+            "<Control-S>": self.safe_copies,
+            "<Control-Delete>": self.clear_files,
+        })
+        self.root.protocol("WM_DELETE_WINDOW", self._close)
+        self._refresh_actions()
+
+    def _refresh_actions(self):
+        has_files = bool(self.files)
+        has_results = bool(self.results)
+        blocked = has_results and any(r.get("decision") == "BLOCK" for r in self.results)
+        self.scan_button.configure(state="normal" if has_files else "disabled")
+        self.save_button.configure(state="normal" if has_results and not blocked else "disabled")
+        self.clear_button.configure(state="normal" if has_files else "disabled")
+
+    def _close(self):
+        save_window_state(self.root, "AIUploadGuard")
+        self.root.destroy()
+
+    def clear_files(self):
+        self.files = []
+        self.results = []
+        self.listbox.delete(0, END)
+        self.overview.configure(text=translate("No scan yet. LIMITED never means safe."))
+        self._refresh_actions()
 
     def add_files(self):
         for p in filedialog.askopenfilenames(parent=self.root, title="Select files"):
@@ -476,6 +510,8 @@ class App:
         self.render_files()
         if self.files:
             self.scan()
+        else:
+            self._refresh_actions()
 
     def render_files(self):
         self.listbox.delete(0, END)
@@ -493,6 +529,7 @@ class App:
             f"LIMITED {counts['LIMITED']} | Not fully checked {counts['not_fully_checked']} "
             "— do not upload without your own review."))
         self.listbox.delete(0, END)
+        self._refresh_actions()
         for r in self.results:
             findings = "; ".join(r["findings"]) or "No candidate matched in checked areas"
             limits = "; ".join(r["unchecked"]) or "Scope is limited to implemented checks"
