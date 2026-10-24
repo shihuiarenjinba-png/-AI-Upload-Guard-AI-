@@ -5,6 +5,7 @@ import hashlib
 import re
 import zipfile
 from pathlib import Path
+from i18n import translate
 from tkinter import BOTH, END, LEFT, RIGHT, Button, Frame, Label, Listbox, Scrollbar, Tk, filedialog, messagebox
 
 EMAIL_RE = re.compile(
@@ -487,7 +488,7 @@ class App:
             return
         self.results = [inspect_file(p) for p in self.files]
         counts = summarize_review(self.results)
-        self.overview.configure(text=(
+        self.overview.configure(text=translate(
             f"BLOCK {counts['BLOCK']} | REVIEW {counts['REVIEW']} | "
             f"LIMITED {counts['LIMITED']} | Not fully checked {counts['not_fully_checked']} "
             "— do not upload without your own review."))
