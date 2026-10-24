@@ -55,6 +55,7 @@ def _initial_language() -> str:
 _LANGUAGE = _initial_language()
 
 TEXTS: dict[str, tuple[str, str]] = {
+    "Clear list": ("Clear list", "一覧をクリア"),
     "1  Add files": ("1  Add files", "1  ファイルを追加"),
     "2  Rescan": ("2  Rescan", "2  再スキャン"),
     "3  Save supported copies": ("3  Save supported copies", "3  対応コピーを保存"),
