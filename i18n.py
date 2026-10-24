@@ -55,6 +55,7 @@ def _initial_language() -> str:
 _LANGUAGE = _initial_language()
 
 TEXTS: dict[str, tuple[str, str]] = {
+    "No matching results.": ("No matching results.", "該当する結果はありません。"),
     "Opens a file picker, then scans the selected files automatically.": ("Opens a file picker, then scans the selected files automatically.", "ファイル選択画面を開き、選んだファイルを自動スキャンします。"),
     "Runs the checks again after you change the file list.": ("Runs the checks again after you change the file list.", "ファイル一覧を変更したあと、もう一度チェックします。"),
     "Only becomes available when there are no BLOCK results.": ("Only becomes available when there are no BLOCK results.", "BLOCK判定がない場合だけ保存できるようになります。"),
