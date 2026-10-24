@@ -55,6 +55,8 @@ def _initial_language() -> str:
 _LANGUAGE = _initial_language()
 
 TEXTS: dict[str, tuple[str, str]] = {
+    "Save copies": ("Save copies", "コピーを保存"),
+    "Add files starts a scan automatically. Review BLOCK / REVIEW / LIMITED below before saving copies.": ("Add files starts a scan automatically. Review BLOCK / REVIEW / LIMITED below before saving copies.", "ファイル追加で自動スキャンします。保存前に下のBLOCK / REVIEW / LIMITEDを確認してください。"),
     "No matching results.": ("No matching results.", "該当する結果はありません。"),
     "Opens a file picker, then scans the selected files automatically.": ("Opens a file picker, then scans the selected files automatically.", "ファイル選択画面を開き、選んだファイルを自動スキャンします。"),
     "Runs the checks again after you change the file list.": ("Runs the checks again after you change the file list.", "ファイル一覧を変更したあと、もう一度チェックします。"),
