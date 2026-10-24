@@ -7,7 +7,7 @@ import zipfile
 from pathlib import Path
 from i18n import translate
 from ui_desktop import bind_shortcuts, restore_window_state, save_window_state
-from tkinter import BOTH, END, LEFT, RIGHT, Button, Frame, Label, Listbox, Scrollbar, Tk, filedialog, messagebox
+from tkinter import BOTH, END, LEFT, RIGHT, Button, Frame, Label, Listbox, OptionMenu, Scrollbar, StringVar, Tk, filedialog, messagebox
 
 EMAIL_RE = re.compile(
     r"(?<![A-Z0-9._%+-])"
@@ -450,6 +450,7 @@ class App:
         restore_window_state(self.root, "AIUploadGuard", min_width=760, min_height=500)
         self.files: list[Path] = []
         self.results: list[dict] = []
+        self.filter_status = StringVar(value="ALL")
         self.overview = None
         top = Frame(root, padx=12, pady=12)
         top.pack(fill="x")
@@ -467,6 +468,11 @@ class App:
         self.overview = Label(root, text="No scan yet. LIMITED never means safe.",
                               anchor="w", padx=12)
         self.overview.pack(fill="x")
+        filter_row = Frame(root, padx=12, pady=(4, 4))
+        filter_row.pack(fill="x")
+        Label(filter_row, text="Show:").pack(side=LEFT)
+        OptionMenu(filter_row, self.filter_status, "ALL", "BLOCK", "REVIEW", "LIMITED",
+                   command=lambda _value: self.render_results()).pack(side=LEFT, padx=(6, 0))
         mid = Frame(root, padx=12)
         mid.pack(fill=BOTH, expand=True)
         sb = Scrollbar(mid)
@@ -498,6 +504,7 @@ class App:
     def clear_files(self):
         self.files = []
         self.results = []
+        self.filter_status.set("ALL")
         self.listbox.delete(0, END)
         self.overview.configure(text=translate("No scan yet. LIMITED never means safe."))
         self._refresh_actions()
