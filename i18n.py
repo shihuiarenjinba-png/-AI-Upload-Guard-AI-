@@ -133,6 +133,8 @@ TEXTS: dict[str, tuple[str, str]] = {
 }
 
 PHRASES: tuple[tuple[str, str], ...] = (
+    ("Not fully checked", "未完全検査"),
+    ("do not upload without your own review.", "自身で確認せずにアップロードしないでください。"),
     ("Unsupported or undecodable text encoding", "未対応またはデコード不能な文字コード"), ("Unsupported or undecodable CSV encoding", "未対応またはデコード不能なCSV文字コード"),
     ("Decoded text contains NUL bytes and appears binary", "テキストにNULバイトが含まれ、バイナリデータの可能性があります"), ("Decoded text contains too many control characters and appears binary", "制御文字が多すぎるため、バイナリデータの可能性があります"),
     ("supported encodings", "対応文字コード"), ("invalid/corrupt", "無効/破損"), ("parser failure", "解析失敗"), ("file access failure", "ファイルアクセス失敗"),
