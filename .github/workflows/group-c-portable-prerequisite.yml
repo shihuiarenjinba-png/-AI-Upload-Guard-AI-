@@ -34,6 +34,8 @@ jobs:
           if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) { throw "Expected EXE missing: $exe" }
           $python = Join-Path $PWD '.venv-build/Scripts/python.exe'
           if (-not (Test-Path -LiteralPath $python -PathType Leaf)) { throw "Build venv missing: $python" }
+          & $python -m pip install 'reportlab>=4.0,<5.0'
+          if ($LASTEXITCODE -ne 0) { throw "PDF test fixture dependency install failed: $LASTEXITCODE" }
           & $python -m unittest discover -s tests -p 'test_*.py' -v
           if ($LASTEXITCODE -ne 0) { throw "Regression suite failed: $LASTEXITCODE" }
           $hash = (Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash
