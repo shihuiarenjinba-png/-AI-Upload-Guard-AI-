@@ -459,10 +459,12 @@ class App:
         Label(top, text="① Add files & scan  →  ② Rescan if needed  →  ③ Review results and save supported copies", font=("Segoe UI", 10, "bold"), wraplength=840, justify=LEFT).pack(anchor="w", pady=(4, 0))
         self.add_button = Button(top, text="1  Add files", command=self.add_files, width=18)
         self.add_button.pack(side=LEFT, pady=8)
+        Label(top, text="選ぶと自動スキャンして判定を表示", fg="#666666").pack(side=LEFT, padx=(6, 12))
         self.scan_button = Button(top, text="2  Rescan", command=self.scan, width=18)
         self.scan_button.pack(side=LEFT, padx=8)
         self.save_button = Button(top, text="3  Save supported copies", command=self.safe_copies, width=26)
         self.save_button.pack(side=LEFT)
+        Label(top, text="BLOCKが無いときだけ共有用コピーを保存", fg="#666666").pack(side=LEFT, padx=(6, 0))
         self.clear_button = Button(top, text="Clear list", command=self.clear_files, width=13)
         self.clear_button.pack(side=LEFT, padx=(8, 0))
         self.overview = Label(root, text="No scan yet. LIMITED never means safe.",
