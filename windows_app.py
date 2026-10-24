@@ -7,6 +7,7 @@ import zipfile
 from pathlib import Path
 from i18n import translate
 from ui_desktop import bind_shortcuts, restore_window_state, save_window_state
+from ui_commandbar import CommandBar
 from tkinter import BOTH, END, LEFT, RIGHT, Button, Frame, Label, Listbox, OptionMenu, Scrollbar, StringVar, Tk, filedialog, messagebox
 
 EMAIL_RE = re.compile(
@@ -457,28 +458,16 @@ class App:
         Label(top, text="AI Upload Guard", font=("Segoe UI", 20, "bold")).pack(anchor="w")
         Label(top, text="Local pre-upload review. No scan can guarantee that a file is safe.").pack(anchor="w")
         Label(top, text="① Add files & scan  →  ② Rescan if needed  →  ③ Review results and save supported copies", font=("Segoe UI", 10, "bold"), wraplength=840, justify=LEFT).pack(anchor="w", pady=(4, 0))
-        action_row = Frame(top)
-        action_row.pack(fill="x", pady=(6, 2))
-        add_card = Frame(action_row, padx=6, pady=4)
-        add_card.pack(side=LEFT, fill="x", expand=True)
-        self.add_button = Button(add_card, text="1  Add files", command=self.add_files, width=18)
-        self.add_button.pack(anchor="w")
-        Label(add_card, text="Opens a file picker, then scans the selected files automatically.", fg="#666666",
-              wraplength=235, justify=LEFT).pack(anchor="w", pady=(3, 0))
-        scan_card = Frame(action_row, padx=6, pady=4)
-        scan_card.pack(side=LEFT, fill="x", expand=True)
-        self.scan_button = Button(scan_card, text="2  Rescan", command=self.scan, width=18)
-        self.scan_button.pack(anchor="w")
-        Label(scan_card, text="Runs the checks again after you change the file list.", fg="#666666",
-              wraplength=220, justify=LEFT).pack(anchor="w", pady=(3, 0))
-        save_card = Frame(action_row, padx=6, pady=4)
-        save_card.pack(side=LEFT, fill="x", expand=True)
-        self.save_button = Button(save_card, text="3  Save supported copies", command=self.safe_copies, width=26)
-        self.save_button.pack(anchor="w")
-        Label(save_card, text="Only becomes available when there are no BLOCK results.", fg="#666666",
-              wraplength=235, justify=LEFT).pack(anchor="w", pady=(3, 0))
-        self.clear_button = Button(top, text="Clear list", command=self.clear_files, width=13)
-        self.clear_button.pack(anchor="w", pady=(2, 0))
+        self.command_bar = CommandBar(top)
+        self.command_bar.pack(fill="x", pady=(6, 2))
+        self.add_button = self.command_bar.add_command("add", "＋", "Add files", self.add_files, primary=True)
+        self.scan_button = self.command_bar.add_command("scan", "↻", "Rescan", self.scan, enabled=False)
+        self.clear_button = self.command_bar.add_command("clear", "✕", "Clear list", self.clear_files, enabled=False)
+        self.command_bar.add_separator()
+        self.save_button = self.command_bar.add_command("save", "▣", "Save copies", self.safe_copies, enabled=False)
+        self.command_bar.add_spacer()
+        Label(top, text="Add files starts a scan automatically. Review BLOCK / REVIEW / LIMITED below before saving copies.",
+              fg="#56616f", anchor="w").pack(fill="x", pady=(0, 4))
         self.overview = Label(root, text="No scan yet. LIMITED never means safe.",
                               anchor="w", padx=12)
         self.overview.pack(fill="x")
