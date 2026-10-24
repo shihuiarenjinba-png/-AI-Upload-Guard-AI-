@@ -453,9 +453,9 @@ class App:
         Label(top, text="AI Upload Guard", font=("Segoe UI", 20, "bold")).pack(anchor="w")
         Label(top, text="Local pre-upload review. No scan can guarantee that a file is safe.").pack(anchor="w")
         Label(top, text="① Add files  →  ② Review results  →  ③ Rescan if needed  →  ④ Save supported copies", font=("Segoe UI", 10, "bold"), wraplength=840, justify=LEFT).pack(anchor="w", pady=(4, 0))
-        Button(top, text="Add files", command=self.add_files, width=18).pack(side=LEFT, pady=8)
-        Button(top, text="Rescan", command=self.scan, width=18).pack(side=LEFT, padx=8)
-        Button(top, text="Export supported copies only", command=self.safe_copies, width=28).pack(side=LEFT)
+        Button(top, text="1  Add files", command=self.add_files, width=18).pack(side=LEFT, pady=8)
+        Button(top, text="2  Rescan", command=self.scan, width=18).pack(side=LEFT, padx=8)
+        Button(top, text="3  Save supported copies", command=self.safe_copies, width=26).pack(side=LEFT)
         self.overview = Label(root, text="No scan yet. LIMITED never means safe.",
                               anchor="w", padx=12)
         self.overview.pack(fill="x")
