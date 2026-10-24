@@ -539,6 +539,22 @@ class App:
         for p in self.files:
             self.listbox.insert(END, p.name)
 
+    def render_results(self):
+        self.listbox.delete(0, END)
+        selected = self.filter_status.get()
+        visible = self.results if selected == "ALL" else [
+            item for item in self.results if item.get("decision") == selected
+        ]
+        if not visible and self.results:
+            self.listbox.insert(END, f"No {selected} results.")
+            return
+        for r in visible:
+            findings = "; ".join(r["findings"]) or "No candidate matched in checked areas"
+            limits = "; ".join(r["unchecked"]) or "Scope is limited to implemented checks"
+            self.listbox.insert(END, f"[{r['decision']}] {Path(r['file']).name} — {findings}")
+            self.listbox.insert(END, f"    Checked: {', '.join(r['checked'])}")
+            self.listbox.insert(END, f"    Not checked: {limits}")
+
     def scan(self):
         if not self.files:
             messagebox.showinfo("AI Upload Guard", "Select one or more files first.")
@@ -549,14 +565,8 @@ class App:
             f"BLOCK {counts['BLOCK']} | REVIEW {counts['REVIEW']} | "
             f"LIMITED {counts['LIMITED']} | Not fully checked {counts['not_fully_checked']} "
             "— do not upload without your own review."))
-        self.listbox.delete(0, END)
         self._refresh_actions()
-        for r in self.results:
-            findings = "; ".join(r["findings"]) or "No candidate matched in checked areas"
-            limits = "; ".join(r["unchecked"]) or "Scope is limited to implemented checks"
-            self.listbox.insert(END, f"[{r['decision']}] {Path(r['file']).name} — {findings}")
-            self.listbox.insert(END, f"    Checked: {', '.join(r['checked'])}")
-            self.listbox.insert(END, f"    Not checked: {limits}")
+        self.render_results()
 
     def safe_copies(self):
         if not self.files:
