@@ -546,7 +546,7 @@ class App:
             item for item in self.results if item.get("decision") == selected
         ]
         if not visible and self.results:
-            self.listbox.insert(END, f"No {selected} results.")
+            self.listbox.insert(END, translate("No matching results."))
             return
         for r in visible:
             findings = "; ".join(r["findings"]) or "No candidate matched in checked areas"
