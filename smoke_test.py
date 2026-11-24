@@ -3,6 +3,7 @@ import tempfile
 from PIL import Image
 from PIL.TiffImagePlugin import IFDRational
 from pypdf import PdfReader, PdfWriter
+from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
 
 from windows_app import find_email_candidates, inspect_file, make_safer_copy
 
@@ -134,7 +135,18 @@ with tempfile.TemporaryDirectory() as tmp:
 
     pdf = root / "sample.pdf"
     writer = PdfWriter()
-    writer.add_blank_page(width=200, height=200)
+    page = writer.add_blank_page(width=200, height=200)
+    font_ref = writer._add_object(DictionaryObject({
+        NameObject("/Type"): NameObject("/Font"),
+        NameObject("/Subtype"): NameObject("/Type1"),
+        NameObject("/BaseFont"): NameObject("/Helvetica"),
+    }))
+    page[NameObject("/Resources")] = DictionaryObject({
+        NameObject("/Font"): DictionaryObject({NameObject("/F1"): font_ref})
+    })
+    content = DecodedStreamObject()
+    content.set_data(b"BT /F1 12 Tf 10 100 Td (synthetic content) Tj ET")
+    page[NameObject("/Contents")] = writer._add_object(content)
     writer.add_metadata({"/Title": "secret", "/Author": "private"})
     writer.xmp_metadata = XMP
     with pdf.open("wb") as fh:

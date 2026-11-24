@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import codecs
 import re
+import time
 import zipfile
 from pathlib import Path
 from tkinter import BOTH, END, LEFT, RIGHT, Button, Frame, Label, Listbox, Scrollbar, Tk, filedialog, messagebox
@@ -34,6 +35,15 @@ TIFF_STRUCTURAL_TAGS = {
     282, 283, 284, 286, 287, 292, 293, 296, 317, 320, 322,
     323, 324, 325, 338, 339,
 }
+MAX_ZIP_ENTRIES = 5_000
+MAX_ZIP_EXPANDED_BYTES = 100 * 1024 * 1024
+MAX_ZIP_RATIO = 1_000
+MAX_XML_BYTES = 300_000
+MAX_OFFICE_SCAN_BYTES = 1_000_000
+MAX_TEXT_BYTES = 2_000_000
+MAX_PDF_PAGES = 20
+MAX_PDF_TEXT_CHARS = 2_000_000
+PDF_SCAN_SECONDS = 15
 
 
 def validate_decoded_text(text: str) -> str:
@@ -127,15 +137,24 @@ def scan_text(text: str) -> list[str]:
     return findings
 
 
-def inspect_office_container(path: Path) -> list[str]:
+def inspect_office_container(path: Path) -> tuple[list[str], str]:
     findings: list[str] = []
     try:
         with zipfile.ZipFile(path) as zf:
-            names = [n.lower() for n in zf.namelist()]
+            infos = zf.infolist()
+            names = [item.filename.lower() for item in infos]
             if path.suffix.lower() == ".docx" and "word/document.xml" not in names:
-                return ["invalid/corrupt DOCX container"]
+                return ["invalid/corrupt DOCX container"], "ERROR"
             if path.suffix.lower() == ".xlsx" and "xl/workbook.xml" not in names:
-                return ["invalid/corrupt XLSX container"]
+                return ["invalid/corrupt XLSX container"], "ERROR"
+            if len(infos) > MAX_ZIP_ENTRIES:
+                return [f"ZIP entry limit exceeded ({len(infos)} > {MAX_ZIP_ENTRIES}); contents not inspected"], "BLOCKED"
+            expanded = sum(info.file_size for info in infos)
+            if expanded > MAX_ZIP_EXPANDED_BYTES:
+                return [f"ZIP expanded-size limit exceeded ({expanded} > {MAX_ZIP_EXPANDED_BYTES}); contents not inspected"], "BLOCKED"
+            extreme = [i for i in infos if i.file_size > 0 and i.file_size / max(i.compress_size, 1) > MAX_ZIP_RATIO]
+            if extreme:
+                return [f"ZIP compression-ratio limit exceeded in {len(extreme)} entr(y/ies); contents not inspected"], "BLOCKED"
             if any("vbaproject.bin" in n for n in names):
                 findings.append("macro content detected")
             if any("externallinks/" in n for n in names):
@@ -143,18 +162,30 @@ def inspect_office_container(path: Path) -> list[str]:
             if any("comments" in n for n in names):
                 findings.append("comments detected")
             text_parts: list[str] = []
-            budget = 1_000_000
-            for info in zf.infolist():
+            budget = MAX_OFFICE_SCAN_BYTES
+            partial_scan = False
+            xml_infos = [info for info in infos if info.filename.lower().endswith(".xml")]
+            for info in xml_infos:
                 if budget <= 0:
+                    partial_scan = True
                     break
-                if info.filename.lower().endswith(".xml") and info.file_size <= 300_000:
-                    data = zf.read(info)[: min(info.file_size, budget)]
-                    budget -= len(data)
-                    text_parts.append(data.decode("utf-8", errors="strict"))
+                if info.file_size > MAX_XML_BYTES:
+                    partial_scan = True
+                    continue
+                data = zf.read(info)
+                if len(data) > budget:
+                    partial_scan = True
+                    data = data[:budget]
+                budget -= len(data)
+                text_parts.append(data.decode("utf-8", errors="strict"))
             findings.extend(scan_text("\n".join(text_parts)))
-    except (zipfile.BadZipFile, OSError, UnicodeError) as exc:
+            if partial_scan:
+                findings.append("partial Office XML scan: oversized XML or scan limit reached")
+                return findings, "PARTIAL"
+    except (zipfile.BadZipFile, OSError, UnicodeError, RuntimeError, MemoryError) as exc:
         findings.append(f"invalid/corrupt Office container: {exc}")
-    return findings
+        return findings, "ERROR"
+    return findings, "COMPLETE"
 
 
 def inspect_image(path: Path) -> list[str]:
@@ -180,34 +211,65 @@ def inspect_image(path: Path) -> list[str]:
     return findings
 
 
-def inspect_pdf(path: Path) -> list[str]:
+def inspect_pdf(path: Path) -> tuple[list[str], str]:
     findings: list[str] = []
     try:
         from pypdf import PdfReader
         reader = PdfReader(str(path), strict=True)
         if reader.is_encrypted:
-            return ["encrypted PDF requires explicit handling"]
+            return ["encrypted PDF requires explicit handling"], "BLOCKED"
         if reader.metadata:
             findings.append("PDF document-info metadata present")
         if reader.xmp_metadata:
             findings.append("PDF XMP metadata present")
-        text = "\n".join((p.extract_text() or "") for p in reader.pages[:20])
-        findings.extend(scan_text(text[:2_000_000]))
+        if reader.attachments:
+            findings.append("PDF attachments are not inspected")
+            # Do not silently treat attachment-bearing PDFs as fully inspected.
+            return findings, "UNSUPPORTED"
+        page_count = len(reader.pages)
+        state = "COMPLETE"
+        if page_count > 20:
+            findings.append("partial PDF text scan: only the first 20 pages are inspected")
+            state = "PARTIAL"
+        chunks: list[str] = []
+        size = 0
+        deadline = time.monotonic() + PDF_SCAN_SECONDS
+        for page in reader.pages[:MAX_PDF_PAGES]:
+            if time.monotonic() > deadline:
+                findings.append("partial PDF text scan: processing time limit reached")
+                state = "PARTIAL"
+                break
+            try:
+                chunk = page.extract_text() or ""
+            except (Exception, MemoryError) as exc:
+                findings.append(f"PDF text extraction failure: {type(exc).__name__}")
+                return findings, "ERROR"
+            if not chunk.strip():
+                findings.append("PDF page has no extractable text; image content was not OCR-inspected")
+                state = "PARTIAL"
+            room = MAX_PDF_TEXT_CHARS - size
+            if len(chunk) > room:
+                chunks.append(chunk[:room])
+                size += room
+                findings.append("partial PDF text scan: extracted text exceeds the 2 MB inspection limit")
+                state = "PARTIAL"
+                break
+            chunks.append(chunk)
+            size += len(chunk)
+        text = "\n".join(chunks)
+        if len(text) > MAX_PDF_TEXT_CHARS:
+            findings.append("partial PDF text scan: extracted text exceeds the 2 MB inspection limit")
+            state = "PARTIAL"
+        findings.extend(scan_text(text[:MAX_PDF_TEXT_CHARS]))
+        return findings, state
+    except MemoryError:
+        return ["PDF inspection stopped: memory limit reached"], "ERROR"
     except Exception as exc:
-        findings.append(f"PDF parser failure: {exc}")
-    return findings
+        return [f"PDF parser failure: {type(exc).__name__}"], "ERROR"
 
 
 def is_hard_failure(findings: list[str]) -> bool:
-    hard_prefixes = (
-        "invalid/corrupt",
-        "image parser failure",
-        "PDF parser failure",
-        "encrypted PDF",
-        "macro content detected",
-        "text parser failure",
-    )
-    return any(item.startswith(hard_prefixes) for item in findings)
+    return any(item.startswith(("invalid/corrupt", "image parser failure", "PDF parser failure", "PDF text extraction failure", "encrypted PDF", "macro content detected", "text parser failure")) for item in findings)
 
 
 def inspect_file(path: Path) -> dict:
@@ -215,37 +277,56 @@ def inspect_file(path: Path) -> dict:
     try:
         size = path.stat().st_size
     except OSError as exc:
-        return {"file": str(path), "size": 0, "status": "rejected", "findings": [f"file access failure: {exc}"]}
-    result = {"file": str(path), "size": size, "status": "accepted", "findings": []}
+        return {"file": str(path), "size": 0, "status": "rejected", "inspection_state": "ERROR", "findings": [f"file access failure: {exc}"], "safe_copy_allowed": False}
+    result = {"file": str(path), "size": size, "status": "accepted", "inspection_state": "COMPLETE", "findings": [], "safe_copy_allowed": False}
     if ext in DANGEROUS:
         result["status"] = "rejected"
+        result["inspection_state"] = "BLOCKED"
         result["findings"].append("executable/active-content type")
         return result
     if ext not in ALLOWED:
         result["status"] = "rejected"
+        result["inspection_state"] = "UNSUPPORTED"
         result["findings"].append("unsupported/unknown extension")
         return result
     if size > 200 * 1024 * 1024:
         result["status"] = "rejected"
+        result["inspection_state"] = "BLOCKED"
         result["findings"].append("file exceeds 200 MB limit")
         return result
 
     if ext in TEXTLIKE:
         try:
-            result["findings"].extend(scan_text(read_text_sample(path)))
+            if size > MAX_TEXT_BYTES:
+                result["findings"].extend(scan_text(read_text_sample(path)))
+                result["findings"].append("partial text scan: inspection is limited to a sample of large files")
+                result["inspection_state"] = "PARTIAL"
+            else:
+                result["findings"].extend(scan_text(read_text_all(path)))
+        except MemoryError:
+            result["findings"].append("text inspection stopped: memory limit reached")
+            result["inspection_state"] = "ERROR"
         except (OSError, UnicodeError) as exc:
             result["findings"].append(f"text parser failure: {exc}")
+            result["inspection_state"] = "ERROR"
     elif ext in {".docx", ".xlsx"}:
-        result["findings"].extend(inspect_office_container(path))
+        result["findings"], result["inspection_state"] = inspect_office_container(path)
     elif ext == ".pdf":
-        result["findings"].extend(inspect_pdf(path))
+        result["findings"], result["inspection_state"] = inspect_pdf(path)
     elif ext in IMAGELIKE:
         result["findings"].extend(inspect_image(path))
+        if is_hard_failure(result["findings"]):
+            result["inspection_state"] = "ERROR"
 
     if is_hard_failure(result["findings"]):
         result["status"] = "rejected"
-    elif result["findings"]:
+        if result["inspection_state"] == "COMPLETE":
+            result["inspection_state"] = "ERROR"
+    elif result["inspection_state"] in {"BLOCKED", "ERROR", "UNSUPPORTED"}:
+        result["status"] = "rejected"
+    elif result["findings"] or result["inspection_state"] == "PARTIAL":
         result["status"] = "warning"
+    result["safe_copy_allowed"] = result["status"] != "rejected" and result["inspection_state"] == "COMPLETE" and ext in (IMAGELIKE | TEXTLIKE | {".pdf"})
     return result
 
 
@@ -257,8 +338,8 @@ def strip_pdf_metadata(writer) -> None:
 
 def make_safer_copy(path: Path, output_dir: Path) -> Path:
     inspection = inspect_file(path)
-    if inspection["status"] == "rejected":
-        raise ValueError("Rejected by intake gate: " + "; ".join(inspection["findings"]))
+    if not inspection["safe_copy_allowed"]:
+        raise ValueError(f"Safer copy is disabled because inspection state is {inspection['inspection_state']}: " + "; ".join(inspection["findings"]))
     ext = path.suffix.lower()
     output_dir.mkdir(parents=True, exist_ok=True)
     out = output_dir / f"{path.stem}_safe{ext}"
@@ -311,13 +392,17 @@ class App:
         self.root.geometry("900x620")
         self.files: list[Path] = []
         self.results: list[dict] = []
+        self.safe_copy_button = None
         top = Frame(root, padx=12, pady=12)
         top.pack(fill="x")
         Label(top, text="AI Upload Guard", font=("Segoe UI", 20, "bold")).pack(anchor="w")
         Label(top, text="Local pre-flight inspection before sending files to AI/external services").pack(anchor="w")
         Button(top, text="Add files", command=self.add_files, width=18).pack(side=LEFT, pady=8)
         Button(top, text="Scan", command=self.scan, width=18).pack(side=LEFT, padx=8)
-        Button(top, text="Create safer copies", command=self.safe_copies, width=20).pack(side=LEFT)
+        self.safe_copy_button = Button(top, text="Create safer copies", command=self.safe_copies, width=20, state="disabled")
+        self.safe_copy_button.pack(side=LEFT)
+        self.status = Label(root, text="Select files, then scan. Partial or unsupported files cannot be copied onward.", anchor="w", padx=12)
+        self.status.pack(fill="x")
         mid = Frame(root, padx=12)
         mid.pack(fill=BOTH, expand=True)
         sb = Scrollbar(mid)
@@ -344,9 +429,23 @@ class App:
             return
         self.results = [inspect_file(p) for p in self.files]
         self.listbox.delete(0, END)
+        state_labels = {
+            "COMPLETE": "完了 / COMPLETE",
+            "PARTIAL": "一部検査 / PARTIAL",
+            "BLOCKED": "制限により中断 / BLOCKED",
+            "ERROR": "解析エラー / ERROR",
+            "UNSUPPORTED": "未対応 / UNSUPPORTED",
+        }
         for r in self.results:
             findings = "; ".join(r["findings"]) or "no flagged issue in supported checks"
-            self.listbox.insert(END, f"[{r['status'].upper()}] {r['file']} — {findings}")
+            self.listbox.insert(END, f"[{state_labels[r['inspection_state']]}] {r['file']} — {findings}")
+        allowed = bool(self.results) and all(r["safe_copy_allowed"] for r in self.results)
+        self.safe_copy_button.config(state="normal" if allowed else "disabled")
+        states = {r["inspection_state"] for r in self.results}
+        if states == {"COMPLETE"}:
+            self.status.config(text="検査完了 / Inspection complete: 選択ファイルを対応範囲で処理しました。検出結果を確認してください。")
+        else:
+            self.status.config(text="一部未検査 / Inspection incomplete: 未検査部分または解析できないファイルがあります。理由を確認してください。安全コピー操作は無効です。")
 
     def safe_copies(self):
         if not self.files:
