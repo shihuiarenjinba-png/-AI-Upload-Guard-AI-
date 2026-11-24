@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>はじめに — AI Upload Guard</title>
+<style>body{font-family:"Segoe UI",Meiryo,sans-serif;max-width:900px;margin:32px auto;padding:0 22px;line-height:1.7;color:#172033}h1{color:#173f67}h2{margin-top:28px;border-bottom:2px solid #dce7f1}.box,.warn{padding:12px 16px;border-radius:8px}.box{background:#eef7ff}.warn{background:#fff5df;border-left:5px solid #d58a00}code{background:#edf2f6;padding:2px 5px}li{margin:.3em 0}footer{margin-top:30px;color:#667085}</style>
+</head>
+<body>
+<h1>AI Upload Guard — はじめに</h1>
+<div class="box">外部AIへ渡す前のファイルをローカル検査し、個人情報・メタデータ等の確認候補を表示します。対応形式では安全化コピーも作れます。</div>
+<h2>最初にやること</h2>
+<ol>
+<li>EXEを起動し「ファイル追加」で対象を選びます。</li>
+<li>検査を実行し、ファイルごとの警告を確認します。</li>
+<li>必要なら出力フォルダーを選び、安全化コピーを作ります。</li>
+<li>コピーを別アプリで開き、内容を確認してから利用します。</li>
+</ol>
+<h2>入力例</h2>
+<p>
+<code>AIへ渡す前の資料.docx</code>、CSV、XLSX、PDF、画像、TXT等。</p>
+<h2>出力されるもの</h2>
+<p>画面に検査結果を表示し、対応形式では元ファイルを上書きせず <code>元名_safe</code> のコピーを指定フォルダーへ保存します。</p>
+<h2>結果と制限</h2>
+<ul>
+<li>電話・メール等は検出候補です。長い数値IDはwarning-onlyで、自動削除しません。</li>
+<li>PASSはファイル全体の安全性保証ではありません。</li>
+<li>scan-only形式は警告確認のみで、安全化コピーを作れません。</li>
+</ul>
+<h2>よくあるエラー</h2>
+<p>対応外形式、破損・暗号化ファイル、書き込み不可の出力先を確認してください。Windowsが起動を止めても保護機能を無効化しないでください。</p>
+<h2>対応環境・既知の制限</h2>
+<p>Windows 11 64-bit候補です。Windows 10、125%／150%表示、最終配布EXEのHuman Acceptanceは未検証です。EXEは未署名です。</p>
+<h2>問い合わせ</h2>
+<p>BOOTHの「ショップへのお問い合わせ」が一次窓口です。利用できない場合のみ <a href="mailto:dmzmr37049@yahoo.co.jp">dmzmr37049@yahoo.co.jp</a> を利用してください。購入者限定サポートでは注文確認をお願いする場合があります。</p>
+<footer>Windows 11 64-bit候補／Windows 10・125%・150%未検証／未署名EXE／Sales release: NO</footer>
+</body>
+</html>
+
