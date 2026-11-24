@@ -47,6 +47,13 @@ with tempfile.TemporaryDirectory() as temporary:
             archive.writestr(f"docProps/item{i}.xml", "x")
     assert inspect_file(too_many)["inspection_state"] == "BLOCKED"
 
+    expanded = root / "expanded.xlsx"
+    with zipfile.ZipFile(expanded, "w", compression=zipfile.ZIP_STORED) as archive:
+        archive.writestr("xl/workbook.xml", "<w/>")
+        archive.writestr("xl/other.xml", "123456")
+    with patch.object(windows_app, "MAX_ZIP_EXPANDED_BYTES", 8):
+        assert inspect_file(expanded)["inspection_state"] == "BLOCKED"
+
     compressed = root / "ratio.docx"
     with zipfile.ZipFile(compressed, "w", compression=zipfile.ZIP_DEFLATED) as archive:
         archive.writestr("word/document.xml", "x" * 3_000_000)
@@ -80,6 +87,8 @@ with tempfile.TemporaryDirectory() as temporary:
         assert inspect_file(exact_text)["inspection_state"] == "ERROR"
     with patch("pypdf._page.PageObject.extract_text", side_effect=ValueError("synthetic extraction failure")):
         assert inspect_file(pdf_limit)["inspection_state"] == "ERROR"
+    with patch("pypdf._page.PageObject.extract_text", return_value="x" * (windows_app.MAX_PDF_TEXT_CHARS + 1)):
+        assert inspect_file(pdf_limit)["inspection_state"] == "PARTIAL"
     ticks = iter([0.0, 0.0, float(windows_app.PDF_SCAN_SECONDS + 1)])
     with patch.object(windows_app.time, "monotonic", side_effect=lambda: next(ticks)), patch("pypdf._page.PageObject.extract_text", return_value="ordinary synthetic text"):
         timed = inspect_file(pdf_limit)
